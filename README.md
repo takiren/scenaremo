@@ -1,0 +1,315 @@
+# scenaremo
+
+**台本(YAML)を1つ書くだけで、キャラが喋る解説動画ができる。**
+
+`scenaremo` は、YAML の台本から [VOICEVOX](https://voicevox.hiroshiba.jp/) で音声を合成し、
+[Remotion](https://www.remotion.dev/) でスライドショー形式の解説動画をレンダリングする Go 製 CLI です。
+
+動画投稿の民主化を目指しています。台本を書ける人なら誰でも、動画編集ソフトを触らずに解説動画を量産できる状態がゴールです。
+
+> **Status: 設計フェーズ。** このドキュメントは実装のゴールを示す設計図です。
+> 現在の進捗は [Issues](https://github.com/takiren/scenaremo/issues) を参照してください。
+
+---
+
+## 何を作るのか
+
+- **スライドショー形式の解説動画**。画像が切り替わり、キャラクターが喋り、フェードで繋がる
+- 音声合成は VOICEVOX（起動済みであることが前提）
+- 台本は YAML（JSON も可）。人間が読み書きする唯一の入力
+- 気に入らないところは **React コンポーネントを直接書き換えて調整できる**
+
+### やらないこと
+
+- 動画編集ソフトの代替にはしない。タイムラインを GUI で編集する機能は持たない
+- 凝ったアニメーションを YAML で表現しようとはしない。それは React 側で書く領分
+- **YAML でコンポーネントツリーは書けるようにしない。** ネスト可能な `component` 配列は
+  実装こそ容易ですが、それは JSX を YAML で書き直すことに等しく、型検査も補完も失われます。
+  小さい部品を組み合わせたい場合は、**合成済みのコンポーネントを1つ書いて registry に登録**してください
+  （→ [設計方針 6](#6-台本からコードは生成しない表現力の限界には-react-で答える)）。
+  合成は React 側で行い、台本は「誰が何を喋るか」の宣言に留めます
+
+---
+
+## 全体像
+
+```mermaid
+flowchart LR
+    A[script.yaml] -->|scenaremo build| B[パース + 検証]
+    B --> C[VOICEVOX<br/>音声合成]
+    C --> D[wav 長さ計測<br/>タイムライン計算]
+    D --> E[".scenaremo/<br/>props.json + audio/*.wav"]
+    E -->|scenaremo render| F[Remotion]
+    F --> G[out/ep01.mp4]
+    H[renderer/src/*.tsx<br/>あなたが編集する層] --> F
+```
+
+1. **CLI が台本をパース**し、JSON Schema で検証する
+2. **VOICEVOX の `/audio_query` → `/synthesis`** を叩いて wav を生成する（内容ハッシュでキャッシュ）
+3. **wav の実測長からタイムラインを計算**する。動画の尺は音声で決まる
+4. **`props.json` を出力**する。これが CLI と Remotion の間の唯一のインターフェース
+5. **共有の Remotion プロジェクトが props.json を読んで描画**し、mp4 を出力する
+
+CLI は「音を作ってタイムラインを組む」ところまで。**見た目の責務は一切持たず、すべて React 側にあります。**
+
+---
+
+## ディレクトリ構成
+
+動画ごとに Remotion プロジェクトを作るのではなく、**共有レンダラ 1 つ × 動画ごとの props** という構成にします。
+`node_modules` がリポジトリに 1 つで済み、動画を増やすコストがほぼゼロになります。
+
+```
+scenaremo/
+├── cmd/scenaremo/          # CLI エントリポイント
+├── internal/
+│   ├── script/             # YAML/JSON パース + 検証
+│   ├── tts/                # 音声合成エンジン (VOICEVOX クライアント)
+│   ├── cache/              # 音声キャッシュ
+│   ├── audio/              # WAV 長さ計測
+│   ├── timeline/           # 秒 → フレーム変換、シーン配置
+│   ├── credit/             # 使用話者のクレジット集計
+│   ├── project/            # props.json 生成 / init / eject
+│   └── doctor/             # 前提条件チェック
+├── renderer/               # ★ 共有 Remotion プロジェクト (pnpm)
+│   └── src/
+│       ├── Root.tsx
+│       ├── Slideshow.tsx   # メインコンポジション
+│       ├── Scene.tsx       # 画像 + トランジション
+│       ├── Subtitle.tsx    # 字幕
+│       └── schema.ts       # zod スキーマ (docs/schema.json に追従)
+├── videos/                 # ★ あなたの動画たち
+│   └── ep01/
+│       ├── script.yaml     # 人間が書く
+│       ├── assets/         # 画像・BGM
+│       └── .scenaremo/     # 生成物 (gitignore)
+├── templates/              # go:embed される雛形 (init / eject 用)
+├── docs/schema.json        # 台本スキーマの唯一の正
+└── examples/
+```
+
+---
+
+## 台本の書き方
+
+`scenes`（画像1枚）の下に `lines`（セリフ）がぶら下がる 2 階層構造です。
+1 枚の画像に複数のセリフを喋らせられるので、解説動画の構造とそのまま一致します。
+
+```yaml
+# yaml-language-server: $schema=../../docs/schema.json
+
+meta:
+  title: "Remotionで解説動画を作る"
+  aspect: "16:9"        # 16:9 | 9:16
+  fps: 30
+
+# 話者のエイリアス定義。声を差し替えたくなったらここだけ直す
+speakers:
+  zundamon:
+    engine: voicevox
+    styleId: 3
+  metan:
+    engine: voicevox
+    styleId: 2
+    speedScale: 1.05
+
+defaults:
+  speaker: zundamon
+  transition: fade
+  gapMs: 300            # セリフ間の余白
+
+scenes:
+  - image: assets/01-title.png
+    transition: fade
+    lines:
+      - text: 今日はRemotionの話をするのだ
+      - speaker: metan
+        text: |
+          スライドショー形式の
+          解説動画を作りますね
+
+  - image: assets/02-overview.png
+    lines:
+      - text: まず台本を書くのだ
+      - text: あとはCLIが音声を作ってくれるのだ
+```
+
+先頭の `$schema` コメントによって、VS Code で **補完とリアルタイム検証が効きます**。
+将来的に開発者以外へ配ることを考えると、ここは重要な入り口です。
+
+---
+
+## コマンド
+
+| コマンド | 役割 |
+|---|---|
+| `scenaremo init <dir>` | 台本の雛形と `assets/` を作る |
+| `scenaremo build <dir>` | 音声を合成し、`.scenaremo/props.json` を出力する |
+| `scenaremo preview <dir>` | Remotion Studio を起動してブラウザで確認する |
+| `scenaremo render <dir>` | build してから mp4 まで書き出す |
+| `scenaremo speakers` | VOICEVOX の話者・スタイル一覧を表示する |
+| `scenaremo credits <dir>` | 使用話者のクレジット表記を出力する |
+| `scenaremo doctor` | Node / VOICEVOX / 依存関係を診断する |
+| `scenaremo eject <dir>` | 独立した Remotion プロジェクトとして切り出す |
+
+---
+
+## 設計方針
+
+### 1. 生成物の境界を契約として固定する
+
+「量産したい」と「気に入らないところを手で直したい」は、放っておくと正面衝突します
+（再生成のたびに手修正が消える）。そこで **3 つの層に分け、誰が所有するかを固定します**。
+
+| 層 | 所有者 | 再生成時の扱い |
+|---|---|---|
+| `videos/ep01/script.yaml` | **あなた**（唯一の入力） | CLI は書き換えない |
+| `videos/ep01/.scenaremo/` | **CLI**（wav / props.json / キャッシュ） | 毎回作り直す。**手で編集しない** |
+| `renderer/src/*.tsx` | **あなた**（見た目のすべて） | 初回生成のみ。以後 CLI は触らない |
+
+**手修正は YAML か React のどちらかで行う。中間生成物は編集対象ではない。**
+このルールさえ守れば、いつ再生成しても壊れません。
+
+### 2. 動画の尺は音声が決める
+
+台本にフレーム数や秒数は書きません。合成した wav の実測長からタイムラインを組み立てます。
+
+- 秒 → フレームは切り上げ、セリフ間には `gapMs` の余白を入れる
+- 総フレーム数は Remotion の `calculateMetadata` が props.json から算出する
+
+**長さの計測に ffmpeg / ffprobe は使いません。** 測る対象は VOICEVOX が返す WAV だけで、
+[`go-audio/wav`](https://github.com/go-audio/wav) を使えば 20 行程度で済むためです。
+外部バイナリのインストールを利用者に要求することは、Phase 3（開発者以外が使う）において
+最大の脱落ポイントになります。Remotion 自身が ffmpeg を内蔵していることもあり、CLI 側でもう1つ増やす理由がありません。
+
+> **実装上の注意:** `wav.Decoder.Duration()` は使わないこと。
+> 内部で data チャンクではなく **RIFF チャンクのサイズ**を用いているため、
+> 常に 36 バイト分（24kHz/16bit mono で約 0.75ms）過大な値を返します。
+> `FwdToPCM()` を呼んだうえで `PCMLen() / (SampleRate × NumChans × BitDepth/8)` から求めてください。
+> `FwdToPCM()` を呼ばないと `PCMLen()` は 0 を返します。
+
+将来 BGM に mp3 等を許す場合は、ffprobe を **任意依存**（あれば使い、無ければ WAV のみ対応）として扱い、
+`doctor` で案内します。必須依存には格上げしません。
+
+### 3. 音声はキャッシュする
+
+キャッシュキーは `hash(engine, styleId, text, speedScale, ...)` です。
+台本を 1 行直しただけで全セリフを再合成していては、量産は回りません。
+
+### 4. 音声合成エンジンは差し替え可能にする
+
+VOICEVOX / AivisSpeech / COEIROINK は **API がほぼ同一**なので、
+`engine` と `baseUrl` を切り替えるだけで実質対応できます。
+将来のクラウド TTS のために interface だけ切っておき、それ以上の抽象化はしません。
+
+### 5. スキーマの正は 1 箇所に置く
+
+Go の struct と Remotion 側の zod で同じ形を 2 回書くことになるため、
+**`docs/schema.json`（JSON Schema）を唯一の正**とし、両者がそこに従います。
+乖離は CI で検出します。
+
+### 6. 台本からコードは生成しない。表現力の限界には React で答える
+
+台本から TSX を生成する方式は採りません。scenaremo は「台本を直して build」を何十回も繰り返すため、
+**再生成のたびに手修正が消える**うえ、動画ごとに分裂した生成コードには共通の改善が伝播しないためです。
+
+代わりに **props.json というデータを Remotion に渡します**。
+
+```bash
+remotion render renderer/src/index.ts Slideshow out/ep01.mp4 \
+  --props=videos/ep01/.scenaremo/props.json
+```
+
+尺は受け側の `calculateMetadata` が props.json から決めます。台本にフレーム数を書かせない仕掛けの核です。
+
+データ駆動の弱点は「この場面だけズームしたい」がスキーマの表現力に縛られることですが、
+ここで**スキーマを拡張し続けると YAML が第二のプログラミング言語になって破綻します**。
+そこで逃げ道を React 側に開けます。
+
+```yaml
+scenes:
+  - image: assets/03.png
+    component: zoom       # renderer/src/scenes/Zoom.tsx を使う
+    props:
+      focus: [0.3, 0.6]
+```
+
+段階的に逃げられます。
+
+1. **YAML で足りる** → そのまま書く
+2. **演出を足したい** → コンポーネントを1つ書いて `component:` で指名する。**全動画で再利用できる資産になる**
+3. **動画まるごと作り込みたい** → `eject` して独立プロジェクトにする
+
+コード生成を使うのは 3 の `eject` だけです。**一度きりで、以後 CLI が関与しない場面でこそコード生成は正しく働きます。**
+
+---
+
+## セットアップ
+
+### 前提条件
+
+- **Go 1.24+**（CLI をソースからビルドする場合のみ）
+- **Node.js 20 以上** と **pnpm**（Remotion のレンダリングに必要）
+- **VOICEVOX ENGINE が起動していること**（既定 `http://127.0.0.1:50021`）
+
+**ffmpeg / ffprobe のインストールは不要です。**（→ [設計方針 2](#2-動画の尺は音声が決める)）
+
+VOICEVOX は当面「すでに起動している」前提です。
+CLI がバックグラウンドで自動起動するかどうかは、Phase 2 で検討します。
+
+```bash
+# 依存の導入
+pnpm install
+
+# 前提条件の診断
+scenaremo doctor
+
+# 動画を1本作る
+scenaremo init videos/ep01
+$EDITOR videos/ep01/script.yaml
+scenaremo preview videos/ep01     # ブラウザで確認しながら調整
+scenaremo render videos/ep01      # → out/ep01.mp4
+```
+
+---
+
+## ロードマップ
+
+| Phase | 内容 |
+|---|---|
+| **Phase 1（現在）** | VOICEVOX 起動済み・Node 導入済みを前提とした CLI。開発者が対象 |
+| **Phase 2** | VOICEVOX の自動起動 / Docker 対応、縦型(9:16)出力、BGM・効果音、字幕、口パク |
+| **Phase 3** | 開発者以外が使えるようにする。GUI もしくは Web UI、クラウドレンダリング |
+
+Phase 3 を見据えて、**エラーメッセージの質と `doctor` の診断精度**は早い段階から重視します。
+開発者以外にとっては、そこが唯一の道しるべになるためです。
+
+---
+
+## ライセンスと利用上の注意
+
+このリポジトリのコードは **MIT ライセンス**です。ただし、**動画を作るあなたには別途 2 つの注意点があります。**
+
+### Remotion のライセンス
+
+Remotion は MIT ではなく独自ライセンスです。個人利用や小規模な組織は無料ですが、
+**一定規模以上の企業が利用する場合は有償の Company License が必要**です。
+条件は必ず [Remotion の公式ライセンス](https://www.remotion.dev/license) で確認してください。
+
+### VOICEVOX の利用規約
+
+VOICEVOX で合成した音声を公開する場合、**音声ライブラリごとにクレジット表記が必要**です（例: `VOICEVOX:ずんだもん`）。
+規約はキャラクターごとに異なるため、利用前に各音声ライブラリの規約を確認してください。
+
+`scenaremo credits` が台本から使用話者を集計してクレジット表記を出力し、
+動画末尾へ自動挿入することもできます。**表記漏れによる事故を防ぐことは、この CLI の重要な役割**と位置づけています。
+
+### 素材
+
+`assets/` に置く画像・BGM のライセンスはあなたの責任で確認してください。
+
+---
+
+## 貢献
+
+設計フェーズのため、まずは [Issues](https://github.com/takiren/scenaremo/issues) での議論を歓迎します。
