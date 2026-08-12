@@ -99,7 +99,7 @@
         },
         "durationInFrames": {
           "type": "integer",
-          "description": "TransitionSeries.Sequence へ渡す尺。喋りの尺そのものではなく、そこへ transition.durationInFrames を足した値になる。TransitionSeries は隣り合うシーケンスを繋ぎのぶん重ねて詰めるため、重なる分をあらかじめ申告しておかないとシーンが繋ぎのぶんだけ前へずれてしまう。",
+          "description": "TransitionSeries.Sequence へ渡す尺。喋りの尺そのものではなく、そこへシーン末尾の余白 (defaults.sceneGapMs) と transition.durationInFrames を足した値になる。TransitionSeries は隣り合うシーケンスを繋ぎのぶん重ねて詰めるため、重なる分をあらかじめ申告しておかないとシーンが繋ぎのぶんだけ前へずれてしまう。\n\n余白が前のシーンの尻に付くのは、繋ぎが次のシーンの先頭で行われてそのぶん前のシーンの末尾に重なるためで、こうしておくと繋ぎが無音の中に収まりやすい。",
           "minimum": 1
         },
         "transition": {
@@ -128,7 +128,7 @@
         },
         "durationInFrames": {
           "type": "integer",
-          "description": "繋ぎに掛けるフレーム数。0 は繋ぎ無しを表し、先頭のシーンは繋ぐ相手がいないので必ず 0 になる。\n\nrenderer はこの値をそのまま使う timing を選ぶこと（linearTiming({durationInFrames}) など）。springTiming のように設定から尺が決まるものを使うと、CLI の申告と食い違って音がずれる。\n\nTransitionSeries の制約により繋ぎは前後どちらのシーケンスよりも長くできないため、指定が長すぎる場合は CLI が前のシーンの尺で頭打ちにしている。",
+          "description": "繋ぎに掛けるフレーム数。0 は繋ぎ無しを表し、先頭のシーンは繋ぐ相手がいないので必ず 0 になる。\n\nrenderer はこの値をそのまま使う timing を選ぶこと（linearTiming({durationInFrames}) など）。springTiming のように設定から尺が決まるものを使うと、CLI の申告と食い違って音がずれる。\n\nTransitionSeries の制約により繋ぎは前後どちらのシーケンスよりも長くできないため、指定が長すぎる場合は CLI が前のシーンの尺（喋り + シーン末尾の余白）で頭打ちにしている。",
           "minimum": 0
         }
       }
