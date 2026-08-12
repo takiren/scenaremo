@@ -70,6 +70,10 @@ func TestDoctor_要対応があれば終了コードが0以外(t *testing.T) {
 	if stderr.Len() != 0 {
 		t.Errorf("標準エラー出力へ重ねて出している: %s", stderr.String())
 	}
+	// 診断の失敗は使い方の誤りではないので、使い方を突きつけないこと
+	if strings.Contains(out+stderr.String(), "使い方:") {
+		t.Errorf("診断の失敗で usage が出ている:\n%s%s", out, stderr.String())
+	}
 }
 
 func TestDoctor_接続先を指定できる(t *testing.T) {
@@ -117,8 +121,12 @@ func TestDoctor_知らないオプションは失敗する(t *testing.T) {
 	if code == exitSuccess {
 		t.Error("知らないオプションなのに成功として終了した")
 	}
-	if !strings.Contains(stderr.String(), "voicevox-url") {
-		t.Errorf("使い方が出ていない: %s", stderr.String())
+	// 使い方の誤りなので、こちらは使い方を添えること
+	msg := stderr.String()
+	for _, want := range []string{"使い方:", "--voicevox-url"} {
+		if !strings.Contains(msg, want) {
+			t.Errorf("%q が含まれない: %s", want, msg)
+		}
 	}
 }
 
@@ -134,8 +142,12 @@ func TestDoctor_余分な引数は失敗する(t *testing.T) {
 	if code == exitSuccess {
 		t.Error("余分な引数なのに成功として終了した")
 	}
-	if !strings.Contains(stderr.String(), "videos/ep01") {
-		t.Errorf("何が余分だったのか分からない: %s", stderr.String())
+	msg := stderr.String()
+	if !strings.Contains(msg, "videos/ep01") {
+		t.Errorf("何が余分だったのか分からない: %s", msg)
+	}
+	if !strings.Contains(msg, "使い方:") {
+		t.Errorf("使い方が添えられていない: %s", msg)
 	}
 }
 
@@ -151,7 +163,11 @@ func TestDoctor_helpは成功する(t *testing.T) {
 	if code != exitSuccess {
 		t.Errorf("--help の終了コードが 0 でない: %d", code)
 	}
-	if !strings.Contains(stderr.String(), "使い方: scenaremo doctor") {
-		t.Errorf("使い方が出ていない: %s", stderr.String())
+	// 求めて出した使い方は標準出力へ（パイプで読めるように）
+	out := stdout.String()
+	for _, want := range []string{"scenaremo doctor", "--voicevox-url", "VOICEVOX ENGINE の URL"} {
+		if !strings.Contains(out, want) {
+			t.Errorf("%q が含まれない: %s", want, out)
+		}
 	}
 }
