@@ -6,6 +6,7 @@
 package audio
 
 import (
+	"bytes"
 	"errors"
 	"fmt"
 	"io"
@@ -36,8 +37,8 @@ type Info struct {
 
 // Duration は path の WAV の再生時間を返す。
 //
-// タイムライン計算はこの値を起点にフレーム数を決めるため、これが最も基本的な入口になる。
-// 書式まで必要な場合は Measure を使う。
+// タイムライン計算はこの値を起点にフレーム数を決める。書式まで必要な場合は Measure を使う。
+// 既にメモリ上にある wav を測るなら MeasureBytes のほうが素直（ディスクへの往復が要らない）。
 func Duration(path string) (time.Duration, error) {
 	info, err := Measure(path)
 	if err != nil {
@@ -64,8 +65,21 @@ func Measure(path string) (Info, error) {
 	return info, nil
 }
 
+// MeasureBytes はメモリ上の WAV バイト列から書式と再生時間を返す。
+//
+// 音声合成は wav をバイト列で返すため、合成直後の計測はこれを使う。
+// 一度ディスクへ書いて読み直す往復が要らず、キャッシュへの書き出しとも独立に測れる。
+func MeasureBytes(b []byte) (Info, error) {
+	return MeasureReader(bytes.NewReader(b))
+}
+
 // MeasureReader は r から WAV を読み取り、書式と再生時間を返す。
 // r は WAV の先頭を指している必要がある。
+//
+// 計測の本体はこの関数で、Duration / Measure / MeasureBytes はいずれもここへ委譲する。
+// io.Reader ではなく io.ReadSeeker を要求するのは、先頭のコンテナ検査で読み位置を戻し、
+// data チャンクの申告値と実データ量を突き合わせるために末尾へ飛ぶため。
+// io.Reader にすると全体をバッファリングする必要が生じ、PCM 本体を読まずに済む利点が失われる。
 func MeasureReader(r io.ReadSeeker) (Info, error) {
 	if err := checkContainer(r); err != nil {
 		return Info{}, err

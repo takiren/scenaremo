@@ -315,6 +315,36 @@ func TestMeasureReader(t *testing.T) {
 	}
 }
 
+// 合成直後の計測はディスクを経由しないため、バイト列から測れることを保証しておく。
+func TestMeasureBytes(t *testing.T) {
+	path := writeWAV(t, 24000, 16, 1, 12000)
+	data, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatalf("テスト用 wav を読めない: %v", err)
+	}
+
+	info, err := audio.MeasureBytes(data)
+	if err != nil {
+		t.Fatalf("MeasureBytes() が失敗した: %v", err)
+	}
+	if info.Duration != 500*time.Millisecond {
+		t.Errorf("MeasureBytes().Duration = %v, 期待値 500ms", info.Duration)
+	}
+
+	// パス経由と同じ結果になること（委譲先が同じであることの確認）。
+	fromPath, err := audio.Measure(path)
+	if err != nil {
+		t.Fatalf("Measure() が失敗した: %v", err)
+	}
+	if info != fromPath {
+		t.Errorf("MeasureBytes() = %+v, Measure() = %+v (一致すべき)", info, fromPath)
+	}
+
+	if _, err := audio.MeasureBytes(nil); err == nil {
+		t.Error("空のバイト列がエラーにならなかった")
+	}
+}
+
 // writeWAV は既知の長さの wav を一時ディレクトリに書き出し、そのパスを返す。
 func writeWAV(t *testing.T, sampleRate, bitDepth, numChans, frames int) string {
 	t.Helper()
