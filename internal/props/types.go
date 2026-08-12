@@ -48,6 +48,9 @@ type Props struct {
 
 	// Scenes はシーンの並び。台本の scenes と 1 対 1 で対応する。
 	Scenes []Scene `json:"scenes"`
+
+	// Credits は使用した音声ライブラリのクレジット。
+	Credits Credits `json:"credits"`
 }
 
 // Meta は動画全体の設定。renderer の calculateMetadata はここから解像度と尺を決める。
@@ -137,4 +140,40 @@ type Line struct {
 
 	// DurationInFrames はこのセリフに与えられたフレーム数。音声の実測長を切り上げた値。
 	DurationInFrames int `json:"durationInFrames"`
+}
+
+// Credits は使用した音声ライブラリのクレジット表記。
+//
+// VOICEVOX は音声ライブラリごとにクレジット表記が必要で、表記漏れは利用者の事故に直結する。
+// 台本から機械的に集計することでその事故を防ぐのは、この CLI の重要な役割と位置づけている。
+type Credits struct {
+	// DurationInFrames はクレジットシーンの尺。0 は表示しないことを表す（→ issue #17）。
+	// 置く位置は最後のシーンの直後と決まっているので、開始位置は持たない。
+	// Entries は 0 でも入っているので、renderer が独自に表示することはできる。
+	DurationInFrames int `json:"durationInFrames"`
+
+	// Entries はクレジット表記の並び。台本での登場順で、重複は取り除いてある。
+	Entries []Entry `json:"entries"`
+}
+
+// Entry は音声ライブラリ1つ分のクレジット。
+//
+// 規約が求めるのはキャラクター単位の表記なので、同じ話者の別スタイルを使っていても1件にまとまる。
+type Entry struct {
+	// Engine は音声合成エンジン。台本の speakers[].engine と同じ値。
+	Engine string `json:"engine"`
+
+	// SpeakerName は話者（キャラクター）の名前。
+	// エンジンの /speakers から取得した表示名で、台本の話者エイリアスではない。
+	SpeakerName string `json:"speakerName"`
+
+	// SpeakerUUID はエンジンが返す話者の UUID。同名の別話者を取り違えないための識別子。
+	SpeakerUUID string `json:"speakerUuid,omitempty"`
+
+	// StyleIDs はこの話者について実際に使われたスタイル ID を昇順に並べたもの。
+	// 表記には要らないが、意図した声が使われたかを確かめるために残している。
+	StyleIDs []int `json:"styleIds"`
+
+	// Text はそのまま表示できるクレジット表記（例: VOICEVOX:ずんだもん）。
+	Text string `json:"text"`
 }
