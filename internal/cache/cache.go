@@ -51,7 +51,7 @@ func (s *Store) Put(key string, wav []byte) error {
 	}
 
 	if err := os.Rename(tempPath, path); err != nil {
-		os.Remove(tempPath)
+		_ = os.Remove(tempPath)
 		return fmt.Errorf("キャッシュの保存に失敗しました: %w", err)
 	}
 	return nil
