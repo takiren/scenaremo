@@ -50,10 +50,10 @@ jobs:
     name: Build and Test
     runs-on: [ubuntu-latest, linux-24.04-arm, macos-latest]
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
       - name: Set up Go
-        uses: actions/setup-go@v5
+        uses: actions/setup-go@v6
         with:
           go-version-file: 'go.mod'
           cache: true
