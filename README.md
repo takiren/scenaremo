@@ -287,6 +287,44 @@ scenes:
 
 コード生成を使うのは 3 の `eject` だけです。**一度きりで、以後 CLI が関与しない場面でこそコード生成は正しく働きます。**
 
+### 7. アセットはビデオディレクトリを public に差し替えて解決する
+
+Remotion の `staticFile()` は public ディレクトリを参照しますが、画像も音声も `videos/<id>/` の下にあり、
+共有レンダラの `renderer/public/` にはありません。共有レンダラ構成における最大の技術リスクはここでした。
+
+**`--public-dir` にビデオディレクトリ自体を渡す**ことで解決します。
+
+```bash
+remotion render renderer/src/index.ts Slideshow out/ep01.mp4 \
+  --public-dir=/path/to/videos/ep01 \
+  --props=/path/to/videos/ep01/.scenaremo/props.json
+```
+
+props.json のパスがビデオディレクトリからの相対（`assets/01-title.png`、`.scenaremo/audio/*.wav`）なのは、
+そのまま `staticFile()` に渡せる形にしておくためです。**この解決方式が props.json のパス表現を決めています。**
+
+Remotion 4.0.508 で実機確認した挙動:
+
+- `--public-dir` は**レンダラのプロジェクト外**を指せる。解決は **cwd 基準**で、絶対パスも使える
+- `.scenaremo/` のような**ドット始まりのディレクトリも配信される**（音声はここに置かれる）
+- `--public-dir` を変えて連続でレンダリングしても、**バンドルのキャッシュは正しく差し替わる**。
+  ep01 の直後に ep02 を出しても前の動画のアセットが混ざることはない
+- `remotion studio --public-dir` も同じく効く（`scenaremo preview` はこれを使う）
+- 日本語や空白を含むファイル名も通る（`staticFile()` がセグメントごとに URL エンコードする）
+- アセットが見つからないとき remotion は **exit code 1** で終わる。CLI はこれで失敗を検出できる
+
+採らなかった案:
+
+| 案 | 実測した結果 |
+|---|---|
+| `renderer/public/<id>/` へコピー | 動きはする。ただし props.json のパスに `<id>/` 接頭辞が必要になり、「ビデオディレクトリからの相対」という契約が崩れる。動画の本数だけアセットが二重に置かれる |
+| props.json に絶対パスを埋めて `<Img src>` へ直接渡す | **動かない。** 素の絶対パスは dev サーバの origin 相対と解釈されて 404 になり、`file://` は Chrome が `Not allowed to load local resource` で拒否する。`staticFile()` 自身も絶対パスを TypeError で弾く |
+
+実装上の注意:
+
+- `staticFile()` が返す URL には `/static-<hash>` の接頭辞が付く。**URL をハードコードしない**
+- `staticFile()` は `./` や `..` で始まるパスを TypeError で弾く。props.json のパスに `./` を付けない
+
 ---
 
 ## セットアップ

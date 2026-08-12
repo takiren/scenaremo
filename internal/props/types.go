@@ -83,6 +83,10 @@ type Meta struct {
 // Scene は画像1枚と、その間に喋るセリフの集まり。
 type Scene struct {
 	// Image は表示する画像のパス。動画ディレクトリからの相対で、区切りは OS に依らず / 。
+	//
+	// この形なのは、renderer が --public-dir に動画ディレクトリを渡して起動し、
+	// この値をそのまま staticFile() へ通すためである（→ README「設計方針 7」）。
+	// 絶対パスにしてはならない。staticFile() が TypeError で弾く。
 	Image string `json:"image"`
 
 	// Component はこのシーンの描画に使う React コンポーネント名。
@@ -132,6 +136,7 @@ type Line struct {
 	Text string `json:"text"`
 
 	// Audio は合成された wav のパス。Image と同じく動画ディレクトリからの相対で / 区切り。
+	// .scenaremo/ 以下を指すが、ドット始まりのディレクトリも public dir として配信されることは確認済み。
 	Audio string `json:"audio"`
 
 	// StartFrame は音声が鳴り始めるフレーム。**シーンの先頭からの相対位置**で、動画の先頭からではない。
