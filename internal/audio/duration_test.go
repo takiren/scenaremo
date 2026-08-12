@@ -156,7 +156,9 @@ func TestDecoderのDurationは36バイト分過大(t *testing.T) {
 	if err != nil {
 		t.Fatalf("テスト用 wav を開けない: %v", err)
 	}
-	defer f.Close()
+	defer func() {
+		_ = f.Close()
+	}()
 
 	d := wav.NewDecoder(f)
 	d.ReadInfo()
@@ -188,7 +190,9 @@ func TestFwdToPCMを呼ばないとPCMLenは0(t *testing.T) {
 	if err != nil {
 		t.Fatalf("テスト用 wav を開けない: %v", err)
 	}
-	defer f.Close()
+	defer func() {
+		_ = f.Close()
+	}()
 
 	d := wav.NewDecoder(f)
 	d.ReadInfo()
@@ -384,11 +388,17 @@ func writeBytes(t *testing.T, dir, name string, data []byte) string {
 	return path
 }
 
+func writeBinPanic(w io.Writer, data any) {
+	if err := binary.Write(w, binary.LittleEndian, data); err != nil {
+		panic(fmt.Sprintf("binary.Write failed: %v", err))
+	}
+}
+
 // riffContainer は payload を RIFF/WAVE コンテナで包む。
 func riffContainer(payload []byte) []byte {
 	var b bytes.Buffer
 	b.WriteString("RIFF")
-	binary.Write(&b, binary.LittleEndian, uint32(4+len(payload)))
+	writeBinPanic(&b, uint32(4+len(payload)))
 	b.WriteString("WAVE")
 	b.Write(payload)
 	return b.Bytes()
@@ -397,13 +407,13 @@ func riffContainer(payload []byte) []byte {
 func fmtChunk(sampleRate, bitDepth, numChans int) []byte {
 	var b bytes.Buffer
 	b.WriteString("fmt ")
-	binary.Write(&b, binary.LittleEndian, uint32(16))
-	binary.Write(&b, binary.LittleEndian, uint16(1)) // PCM
-	binary.Write(&b, binary.LittleEndian, uint16(numChans))
-	binary.Write(&b, binary.LittleEndian, uint32(sampleRate))
-	binary.Write(&b, binary.LittleEndian, uint32(sampleRate*numChans*bitDepth/8))
-	binary.Write(&b, binary.LittleEndian, uint16(numChans*bitDepth/8))
-	binary.Write(&b, binary.LittleEndian, uint16(bitDepth))
+	writeBinPanic(&b, uint32(16))
+	writeBinPanic(&b, uint16(1)) // PCM
+	writeBinPanic(&b, uint16(numChans))
+	writeBinPanic(&b, uint32(sampleRate))
+	writeBinPanic(&b, uint32(sampleRate*numChans*bitDepth/8))
+	writeBinPanic(&b, uint16(numChans*bitDepth/8))
+	writeBinPanic(&b, uint16(bitDepth))
 	return b.Bytes()
 }
 

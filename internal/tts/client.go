@@ -234,7 +234,9 @@ func (c *Client) do(ctx context.Context, call apiCall) ([]byte, error) {
 		}
 		return nil, &EngineUnavailableError{Kind: c.kind, BaseURL: c.baseURL, Err: err}
 	}
-	defer resp.Body.Close()
+	defer func() {
+		_ = resp.Body.Close()
+	}()
 
 	data, err := io.ReadAll(resp.Body)
 	if err != nil {
