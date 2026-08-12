@@ -355,6 +355,34 @@ scenaremo preview videos/ep01     # ブラウザで確認しながら調整
 scenaremo render videos/ep01      # → out/ep01.mp4
 ```
 
+### 前提条件を診断する
+
+`scenaremo doctor` が上の前提条件をまとめて確かめます。**満たしていない項目には、次に何をすればよいかが付きます。**
+1 項目が失敗しても最後まで診断するので、足りないものは 1 回で分かります。
+
+```
+$ scenaremo doctor
+scenaremo doctor: 動かすために必要なものが揃っているか確認します
+
+[ OK ] Node.js: v24.18.0
+[ OK ] pnpm: 11.11.0
+[ NG ] renderer の依存: renderer/node_modules がありません
+       → pnpm install --dir renderer を実行してください
+       → 依存は共有レンダラに 1 つだけなので、この導入は動画を何本作っても 1 回で済みます
+[ NG ] VOICEVOX ENGINE: http://127.0.0.1:50021 に接続できませんでした（起動していないようです）
+       → VOICEVOX アプリを起動してください。アプリを開いている間だけエンジンも動きます
+       → エンジン単体で使っている場合は VOICEVOX ENGINE の run（Windows は run.exe）を実行してください
+       → Docker なら docker run --rm -p 50021:50021 voicevox/voicevox_engine:cpu-latest でも起動できます
+       → 起動できたかどうかは、ブラウザで http://127.0.0.1:50021/docs が開けるかで確かめられます
+       → 別のポートやマシンで動かしている場合は scenaremo doctor --voicevox-url=http://<ホスト>:<ポート> を指定してください
+[ OK ] 書き込み権限: /path/to/scenaremo に書き込めます
+
+5 件中 2 件が要対応です（renderer の依存, VOICEVOX ENGINE）。上の → の手順を実行してから、もう一度 scenaremo doctor を実行してください。
+```
+
+要対応があると終了コードは 1 になるので、`scenaremo doctor && scenaremo render videos/ep01` のように繋げられます。
+VOICEVOX を既定以外のポートやマシンで動かしている場合は `--voicevox-url` で接続先を指定してください。
+
 ---
 
 ## ロードマップ
