@@ -55,7 +55,9 @@ func Measure(path string) (Info, error) {
 		// os.Open のエラーはパスを含む。%w で包むので errors.Is(err, fs.ErrNotExist) もそのまま効く。
 		return Info{}, fmt.Errorf("音声ファイルを開けません: %w", err)
 	}
-	defer f.Close()
+	defer func() {
+		_ = f.Close()
+	}()
 
 	info, err := MeasureReader(f)
 	if err != nil {
