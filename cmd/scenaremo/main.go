@@ -71,10 +71,11 @@ func run(ctx context.Context, args []string, stdout, stderr io.Writer) int {
 	case errors.Is(err, errReported):
 		// コマンドが説明を出し終えている。重ねて出さない。
 	case errors.As(err, &usageErr):
-		fmt.Fprintln(stderr, "scenaremo:", err)
-		fmt.Fprint(stderr, cmd.UsageString())
+		// 標準エラーへの書き出しが失敗しても、報告先がもう無いので握り潰すほかない。
+		_, _ = fmt.Fprintln(stderr, "scenaremo:", err)
+		_, _ = fmt.Fprint(stderr, cmd.UsageString())
 	default:
-		fmt.Fprintln(stderr, "scenaremo:", err)
+		_, _ = fmt.Fprintln(stderr, "scenaremo:", err)
 	}
 	return exitFailure
 }

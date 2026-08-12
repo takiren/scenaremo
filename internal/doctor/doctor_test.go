@@ -88,7 +88,7 @@ func versionHandler(version string) http.HandlerFunc {
 			return
 		}
 		w.Header().Set("Content-Type", "application/json")
-		fmt.Fprintf(w, "%q", version)
+		_, _ = fmt.Fprintf(w, "%q", version)
 	}
 }
 
