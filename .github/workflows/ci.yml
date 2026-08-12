@@ -77,8 +77,11 @@ jobs:
       - uses: actions/checkout@v7
 
       - name: Set up pnpm
-        # バージョンは renderer/package.json の packageManager から読まれる
         uses: pnpm/action-setup@v4
+        with:
+          # defaults.run.working-directory は run: にしか効かないので、
+          # アクションには packageManager を読む先を明示する必要がある。
+          package_json_file: 'renderer/package.json'
 
       - name: Set up Node
         uses: actions/setup-node@v4
