@@ -44,11 +44,13 @@ const (
 	DefaultGapMs = 300
 	// DefaultSceneGapMs は defaults.sceneGapMs の既定値（ミリ秒）。
 	//
-	// セリフ間 (DefaultGapMs) より長いのは、シーンの切り替わりが話題の切れ目にあたるため。
-	// ここが短いと、文の切れ目より話題の切れ目のほうが浅い間になって落ち着かない。
-	// DefaultTransitionMs (400) より長いのも意図的で、こうしておくとフェードが
-	// 無音の中で完結し、前のシーンの語尾に被らない（→ issue #44）。
-	DefaultSceneGapMs = 500
+	// シーンの切り替わりに最小限の間を作るための値。VOICEVOX が wav の前後に
+	// 0.1 秒ずつ無音を焼き込むため、実効の余白は約 300ms になる。
+	//
+	// DefaultTransitionMs (400) より短いので、既定のままではフェードの一部が
+	// 前のシーンの語尾に重なる。フェードを無音の中で完結させたい場合は、
+	// トランジションより長い値を台本で指定すること（→ issue #44）。
+	DefaultSceneGapMs = 100
 	// DefaultComponent は scenes[].component の既定値。renderer 側 registry のキー。
 	DefaultComponent = "default"
 )

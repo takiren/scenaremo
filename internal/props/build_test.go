@@ -465,7 +465,7 @@ func TestBuildFillsDefaults(t *testing.T) {
 		t.Errorf("Scenes[0].Lines[0].Speaker: got %q, want \"zundamon\"", got.Scenes[0].Lines[0].Speaker)
 	}
 	// gapMs / sceneGapMs も既定値で埋まる。埋め忘れると余白が消えて詰まった動画になる。
-	if got.Meta.DurationInFrames != 159 { // gapMs 300 (9) と sceneGapMs 500 (15) が効いた尺
-		t.Errorf("Meta.DurationInFrames: got %d, want 159 (既定の余白が入った尺)", got.Meta.DurationInFrames)
+	if got.Meta.DurationInFrames != 135 { // gapMs 300 (9) と sceneGapMs 100 (3) が効いた尺
+		t.Errorf("Meta.DurationInFrames: got %d, want 135 (既定の余白が入った尺)", got.Meta.DurationInFrames)
 	}
 }

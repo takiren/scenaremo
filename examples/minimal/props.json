@@ -8,13 +8,13 @@
     "width": 1920,
     "height": 1080,
     "fps": 30,
-    "durationInFrames": 354
+    "durationInFrames": 330
   },
   "scenes": [
     {
       "image": "assets/01-title.png",
       "component": "default",
-      "durationInFrames": 190,
+      "durationInFrames": 178,
       "transition": {
         "type": "fade",
         "durationInFrames": 0
@@ -39,7 +39,7 @@
     {
       "image": "assets/02-overview.png",
       "component": "default",
-      "durationInFrames": 176,
+      "durationInFrames": 164,
       "transition": {
         "type": "fade",
         "durationInFrames": 12

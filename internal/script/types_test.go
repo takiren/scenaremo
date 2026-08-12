@@ -62,7 +62,7 @@ func TestUnmarshalMinimalExample(t *testing.T) {
 	if got.Defaults.GapMs == nil || *got.Defaults.GapMs != 300 {
 		t.Errorf("defaults.gapMs = %v", got.Defaults.GapMs)
 	}
-	if got.Defaults.SceneGapMs == nil || *got.Defaults.SceneGapMs != 500 {
+	if got.Defaults.SceneGapMs == nil || *got.Defaults.SceneGapMs != 100 {
 		t.Errorf("defaults.sceneGapMs = %v", got.Defaults.SceneGapMs)
 	}
 
