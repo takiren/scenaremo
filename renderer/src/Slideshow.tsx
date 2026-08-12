@@ -1,58 +1,76 @@
+import {linearTiming, TransitionSeries} from '@remotion/transitions';
+import {fade} from '@remotion/transitions/fade';
+import {none} from '@remotion/transitions/none';
 import React from 'react';
-import {AbsoluteFill, Sequence} from 'remotion';
+import {AbsoluteFill} from 'remotion';
 import {Scene} from './Scene';
-import type {Props, Scene as SceneData} from './schema';
+import type {Props, Transition as TransitionData} from './schema';
 
 /**
- * シーンを動画の先頭からの絶対位置に直す。
+ * 繋ぎの見せ方を選ぶ。
  *
- * props.json のシーンは「尺」しか持たない。開始位置を持たないのは、シーンを
- * TransitionSeries で並べる前提だからで、TransitionSeries は隣り合うシーケンスを
- * 繋ぎのぶん重ねて前へ詰めるため、絶対位置を渡しても意味を成さないためである。
+ * fade は既定のまま（`shouldFadeOutExitingScene` は指定しない）で使う。前のシーンを
+ * 出したまま新しいシーンを重ねて濃くしていくので、繋ぎの間ずっと画面は前後どちらかの色で
+ * 埋まっている。両方を同時に薄くすると中間だけ下地の黒が透けて、暗く沈む一瞬が生まれる。
  *
- * その詰め方をここで再現する。シーン i は、それより前のシーンの尺の合計から、
- * **自分の繋ぎまでを含めた**繋ぎの合計を引いた位置から始まる。
- * 自分の繋ぎを含めるのは、繋ぎのぶんだけ自分が前へ食い込むのが TransitionSeries の挙動だから。
+ * none は「演出を入れない」ための presentation であって、繋ぎの尺そのものを省くものではない。
+ * 総尺の式（Σ シーンの尺 − Σ 繋ぎの尺）は type に依らず成り立っているので、
+ * none でも申告されたフレーム数は詰めないと総尺が meta.durationInFrames と食い違い、
+ * 末尾が composition の尺で切り落とされる。画は繋ぎの先頭で切り替わる（前のシーンの上に
+ * 新しいシーンがそのまま乗るため）。次の声が鳴り始める頃には既に切り替わっている側なので、
+ * 「新しい声に古い画が残る」という同期ずれには倒れない。
  *
- * 結果として最後のシーンの終端は meta.durationInFrames と一致し、
- * あるシーンの最後のセリフが終わった瞬間に次のシーンの最初のセリフが始まる。
- *
- * issue #10 で TransitionSeries に置き換えると、この計算は TransitionSeries 側が持つ。
+ * なお現状の CLI は type が none なら尺も 0 にするため、この分岐が効くのは
+ * 手書きや将来の props.json で none に尺が付いてきた場合だけである。
  */
-export const sceneOffsets = (scenes: SceneData[]): number[] => {
-	const offsets: number[] = [];
-	let durations = 0;
-	let transitions = 0;
-	for (const scene of scenes) {
-		transitions += scene.transition.durationInFrames;
-		offsets.push(durations - transitions);
-		durations += scene.durationInFrames;
-	}
-	return offsets;
-};
+const presentationFor = (type: TransitionData['type']) => (type === 'fade' ? fade() : none());
 
 /**
- * メインコンポジション。props.json の scenes をそのまま時間軸に並べる。
+ * メインコンポジション。props.json の scenes を TransitionSeries で並べる。
+ *
+ * シーンの開始位置を計算しないのは、TransitionSeries が繋ぎのぶん重ねながら
+ * 子シーケンスを前へ詰めてくれるからである。props.json が絶対位置を持たないのも同じ理由で、
+ * 詰め方を両側で二重に持つと必ずどちらかがずれる（→ README「設計方針 6」）。
  *
  * 尺と解像度は Root.tsx の calculateMetadata が props.json から決めるので、
  * ここでフレーム数を計算し直してはならない（丸めが変わって音がずれる）。
+ * scene.durationInFrames は繋ぎのぶんを含んだ値で届くため、そのまま渡すのが正しい。
  */
 export const Slideshow: React.FC<Props> = ({scenes}) => {
-	const offsets = sceneOffsets(scenes);
-
 	return (
 		<AbsoluteFill style={{backgroundColor: 'black'}}>
-			{scenes.map((scene, i) => (
-				<Sequence
+			<TransitionSeries>
+				{scenes.map((scene, i) => (
+					// TransitionSeries は Transition を Sequence の間に挟む API なので、
+					// シーン 1 つを「繋ぎ + シーケンス」の組で表す。Fragment は TransitionSeries 側で
+					// 平らに均されるため、子の並びとしては両者が交互に現れる形になる。
 					// 台本の並び順がシーンの同一性そのものなので、添字を key にしてよい。
-					key={i}
-					from={offsets[i]}
-					durationInFrames={scene.durationInFrames}
-					name={scene.image}
-				>
-					<Scene scene={scene} />
-				</Sequence>
-			))}
+					<React.Fragment key={i}>
+						{/*
+						 * 繋ぎが 0 フレームなら Transition を置かない。先頭のシーンは繋ぐ相手が
+						 * いないので必ず 0 で届き、TransitionSeries も先頭に Transition を置けないため、
+						 * この 1 つの条件で「繋ぎ無し」と「先頭は繋げない」の両方を満たせる。
+						 */}
+						{scene.transition.durationInFrames > 0 ? (
+							<TransitionSeries.Transition
+								presentation={presentationFor(scene.transition.type)}
+								// 申告されたフレーム数をそのまま尺にする timing でなければならない。
+								// springTiming のように設定から尺が決まるものを使うと、
+								// CLI が確定させた総尺と食い違って音がずれる。
+								timing={linearTiming({
+									durationInFrames: scene.transition.durationInFrames,
+								})}
+							/>
+						) : null}
+						<TransitionSeries.Sequence
+							durationInFrames={scene.durationInFrames}
+							name={scene.image}
+						>
+							<Scene scene={scene} />
+						</TransitionSeries.Sequence>
+					</React.Fragment>
+				))}
+			</TransitionSeries>
 		</AbsoluteFill>
 	);
 };
