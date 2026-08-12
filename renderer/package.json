@@ -1,0 +1,25 @@
+{
+  "name": "scenaremo-renderer",
+  "version": "0.0.0",
+  "private": true,
+  "description": "scenaremo の共有 Remotion プロジェクト。全動画がこの 1 つを共有し、動画ごとの差分は props.json で渡す。",
+  "type": "module",
+  "packageManager": "pnpm@11.11.0",
+  "scripts": {
+    "studio": "remotion studio src/index.ts",
+    "render": "remotion render src/index.ts Slideshow",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@remotion/cli": "4.0.508",
+    "react": "19.0.0",
+    "react-dom": "19.0.0",
+    "remotion": "4.0.508",
+    "zod": "4.4.3"
+  },
+  "devDependencies": {
+    "@types/react": "19.0.0",
+    "@types/react-dom": "19.0.0",
+    "typescript": "5.7.3"
+  }
+}

@@ -73,11 +73,12 @@ scenaremo/
 │   └── doctor/             # 前提条件チェック
 ├── renderer/               # ★ 共有 Remotion プロジェクト (pnpm)
 │   └── src/
-│       ├── Root.tsx
+│       ├── index.ts        # registerRoot
+│       ├── Root.tsx        # Composition 定義。props.json から尺と解像度を決める
 │       ├── Slideshow.tsx   # メインコンポジション
 │       ├── Scene.tsx       # 画像 + トランジション
 │       ├── Subtitle.tsx    # 字幕
-│       └── schema.ts       # zod スキーマ (docs/schema.json に追従)
+│       └── schema.ts       # zod スキーマ (docs/props.schema.json に追従)
 ├── videos/                 # ★ あなたの動画たち
 │   └── ep01/
 │       ├── script.yaml     # 人間が書く
@@ -341,8 +342,8 @@ VOICEVOX は当面「すでに起動している」前提です。
 CLI がバックグラウンドで自動起動するかどうかは、Phase 2 で検討します。
 
 ```bash
-# 依存の導入
-pnpm install
+# 依存の導入（Remotion は renderer/ にある。動画を何本作ってもここ 1 つで済む）
+pnpm install --dir renderer
 
 # 前提条件の診断
 scenaremo doctor

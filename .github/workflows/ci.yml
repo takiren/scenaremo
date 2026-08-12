@@ -66,3 +66,32 @@ jobs:
 
       - name: Test
         run: go test -v ./...
+
+  renderer:
+    name: Renderer Typecheck
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: renderer
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Set up pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          # defaults.run.working-directory は run: にしか効かないので、
+          # アクションには packageManager を読む先を明示する必要がある。
+          package_json_file: 'renderer/package.json'
+
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: 'pnpm'
+          cache-dependency-path: 'renderer/pnpm-lock.yaml'
+
+      - name: Install
+        run: pnpm install --frozen-lockfile
+
+      - name: Typecheck
+        run: pnpm typecheck

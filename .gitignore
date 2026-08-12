@@ -149,6 +149,9 @@ vite.config.ts.timestamp-*
 out/
 # Go のビルド成果物
 /scenaremo
+# Remotion が落としてくる Chrome Headless Shell (200MB 近い)。
+# remotion を叩いた場所に作られるので、リポジトリ直下と renderer/ の両方があり得る。
+.remotion/
 
 # --- ローカルのエージェント設定（リポジトリでは共有しない） ---
 .agents/
