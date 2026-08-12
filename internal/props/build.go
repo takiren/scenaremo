@@ -3,6 +3,8 @@ package props
 import (
 	"errors"
 	"fmt"
+	"path"
+	"path/filepath"
 	"time"
 
 	"github.com/takiren/scenaremo/internal/script"
@@ -147,19 +149,28 @@ func buildScenes(s *script.Script, audio [][]LineAudio, tl timeline.Timeline) ([
 	scenes := make([]Scene, 0, len(s.Scenes))
 
 	for i, scene := range s.Scenes {
+		image, err := assetPath(scene.Image)
+		if err != nil {
+			return nil, fmt.Errorf("scenes[%d].image: %w", i, err)
+		}
+
 		lines := make([]Line, 0, len(scene.Lines))
 		for j, line := range scene.Lines {
+			audioPath, err := assetPath(audio[i][j].Path)
+			if err != nil {
+				return nil, fmt.Errorf("scenes[%d].lines[%d].audio: %w", i, j, err)
+			}
 			lines = append(lines, Line{
 				Speaker:          line.Speaker,
 				Text:             line.Text,
-				Audio:            audio[i][j].Path,
+				Audio:            audioPath,
 				StartFrame:       tl.Scenes[i].Lines[j].StartFrame,
 				DurationInFrames: tl.Scenes[i].Lines[j].DurationFrames,
 			})
 		}
 
 		scenes = append(scenes, Scene{
-			Image:     scene.Image,
+			Image:     image,
 			Component: scene.Component,
 			// Props は中身を見ずにそのまま渡す。何が正しいかを知っているのは
 			// コンポーネント側だけなので、CLI が検証すると逃げ道を塞ぐことになる（→ issue #34）。
@@ -173,4 +184,22 @@ func buildScenes(s *script.Script, audio [][]LineAudio, tl timeline.Timeline) ([
 		})
 	}
 	return scenes, nil
+}
+
+// assetPath は台本や合成結果のパスを props.json に載せる形へ直す。
+//
+// 区切りを / に揃えるのは、Windows で作った props.json を Linux でレンダリングできるようにするため。
+// 絶対パスを弾くのは、それが別のマシンでも CI でも eject 後のプロジェクトでも成り立たないため。
+// 動画ディレクトリからの相対でありさえすれば、renderer 側がどうアセットを解決することにしても
+// （--public-dir を差し替えても、public へコピーしても）そのまま通る（→ issue #12）。
+func assetPath(p string) (string, error) {
+	if p == "" {
+		return "", errors.New("パスが空です")
+	}
+	slashed := filepath.ToSlash(p)
+	if path.IsAbs(slashed) || filepath.IsAbs(p) {
+		return "", fmt.Errorf("パスが絶対パスです: %s (動画ディレクトリからの相対パスで書いてください。"+
+			"props.json は別のマシンでも読めるように絶対パスを持ちません)", p)
+	}
+	return slashed, nil
 }

@@ -1,6 +1,7 @@
 package props_test
 
 import (
+	"path/filepath"
 	"strings"
 	"testing"
 	"time"
@@ -259,6 +260,17 @@ func TestBuildErrors(t *testing.T) {
 			mutate:  func(in *props.Input) { in.Script.Meta.Aspect = script.Aspect("4:3") },
 			wantMsg: "解像度を決められないアスペクト比です",
 		},
+		{
+			// 絶対パスは別のマシンでも CI でも成り立たない。props.json に載せる前に止める。
+			name:    "画像が絶対パス",
+			mutate:  func(in *props.Input) { in.Script.Scenes[0].Image = "/tmp/01.png" },
+			wantMsg: "絶対パスです",
+		},
+		{
+			name:    "音声のパスが空",
+			mutate:  func(in *props.Input) { in.Audio[0][0].Path = "" },
+			wantMsg: "パスが空です",
+		},
 	}
 
 	for _, tt := range tests {
@@ -274,6 +286,29 @@ func TestBuildErrors(t *testing.T) {
 				t.Errorf("エラーメッセージ: got %q, want %q を含む", err.Error(), tt.wantMsg)
 			}
 		})
+	}
+}
+
+// TestBuildSeparator は props.json のパスが常に / 区切りになることを確かめる。
+// props.json を作ったマシンと動画をレンダリングするマシンが違っても読めるようにするため。
+//
+// 変換は filepath.ToSlash に任せる。Windows では \ が / へ直り、それ以外の OS では何も起きない。
+// OS に依らず \ を潰してしまうと、\ を含む正当なファイル名を壊すことになる。
+func TestBuildSeparator(t *testing.T) {
+	in := baseInput()
+	in.Script.Scenes[0].Image = filepath.Join("assets", "sub", "01.png")
+
+	got := build(t, in)
+
+	if want := "assets/sub/01.png"; got.Scenes[0].Image != want {
+		t.Errorf("Scenes[0].Image: got %q, want %q", got.Scenes[0].Image, want)
+	}
+	for i, scene := range got.Scenes {
+		for j, line := range scene.Lines {
+			if strings.Contains(line.Audio, string(filepath.Separator)) && filepath.Separator != '/' {
+				t.Errorf("Scenes[%d].Lines[%d].Audio に OS 固有の区切りが残っている: %q", i, j, line.Audio)
+			}
+		}
 	}
 }
 
