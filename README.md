@@ -68,8 +68,8 @@ scenaremo/
 │   ├── cache/              # 音声キャッシュ
 │   ├── audio/              # WAV 長さ計測
 │   ├── timeline/           # 秒 → フレーム変換、シーン配置
-│   ├── credit/             # 使用話者のクレジット集計
-│   ├── project/            # props.json 生成 / init / eject
+│   ├── props/              # props.json の型・生成・書き出し（クレジット集計を含む）
+│   ├── project/            # init / eject
 │   └── doctor/             # 前提条件チェック
 ├── renderer/               # ★ 共有 Remotion プロジェクト (pnpm)
 │   └── src/
@@ -84,7 +84,9 @@ scenaremo/
 │       ├── assets/         # 画像・BGM
 │       └── .scenaremo/     # 生成物 (gitignore)
 ├── templates/              # go:embed される雛形 (init / eject 用)
-├── docs/schema.json        # 台本スキーマの唯一の正
+├── docs/
+│   ├── schema.json         # 台本スキーマの唯一の正
+│   └── props.schema.json   # props.json スキーマの唯一の正
 └── examples/
 ```
 
@@ -173,9 +175,22 @@ scenes:
 ### 2. 動画の尺は音声が決める
 
 台本にフレーム数や秒数は書きません。合成した wav の実測長からタイムラインを組み立てます。
+総フレーム数は CLI が確定させ、Remotion の `calculateMetadata` はその値をそのまま採用します。
 
-- 秒 → フレームは切り上げ、セリフ間には `gapMs` の余白を入れる
-- 総フレーム数は Remotion の `calculateMetadata` が props.json から算出する
+**秒 → フレームの変換は、音声も余白も一律で切り上げます。**
+
+- 切り上げるのは音の欠けを防ぐため。Remotion の `Sequence` は `durationInFrames` で音を打ち切るので、
+  切り捨てると 1 フレームに満たない末尾が毎回削られる
+- 余白は切っても音が欠けないので四捨五入でも構わないが、**規則が 1 つで説明できるほうが契約として強い**。
+  差は 1 フレーム分の無音（30fps で 33ms）にしかならない
+- 丸めた値は整数のまま積み上げ、途中で秒に戻さない。ここで生まれる誤差は「ズレ」ではなく
+  **「無音がわずかに伸びる」形でしか出ない**。各音声は自分の `Sequence` の先頭で鳴るため、
+  音と音の同期は構成上ずれようがなく、伸びるのは間だけ
+- **props.json のフレーム数は、受け取る側で計算し直さないこと。**
+  秒に戻して掛け直すと丸めが再現できず、かえって音がずれる
+
+なお「余白ゼロ」は無音ゼロではありません。VOICEVOX は既定で各 wav の前後に 0.1 秒ずつ無音を入れるため、
+セリフ間の実効の余白は `gapMs + 200ms` になります。`gapMs: 0` にしても間は消えません（→ issue #44）。
 
 **長さの計測に ffmpeg / ffprobe は使いません。** 測る対象は VOICEVOX が返す WAV だけで、
 [`go-audio/wav`](https://github.com/go-audio/wav) を使えば 20 行程度で済むためです。
@@ -204,9 +219,16 @@ VOICEVOX / AivisSpeech / COEIROINK は **API がほぼ同一**なので、
 
 ### 5. スキーマの正は 1 箇所に置く
 
-Go の struct と Remotion 側の zod で同じ形を 2 回書くことになるため、
-**`docs/schema.json`（JSON Schema）を唯一の正**とし、両者がそこに従います。
-乖離は CI で検出します。
+Go の struct と Remotion 側の zod で同じ形を 2 回書くことになるため、**JSON Schema を唯一の正**とし、
+両者がそこに従います。乖離は CI で検出します。
+
+| スキーマ | 対象 | 誰が読むか |
+|---|---|---|
+| `docs/schema.json` | 台本 | エディタ (yaml-language-server) と CLI |
+| `docs/props.schema.json` | props.json | CLI と renderer 側の zod |
+
+props.json は人間が書かないのでエディタ補完のためではありませんが、**これが CLI と Remotion の契約書そのもの**です。
+契約が実際にどういう JSON になるのかは [`examples/minimal/props.json`](examples/minimal/props.json) に現物を置いてあります。
 
 ### 6. 台本からコードは生成しない。表現力の限界には React で答える
 
@@ -220,7 +242,30 @@ remotion render renderer/src/index.ts Slideshow out/ep01.mp4 \
   --props=videos/ep01/.scenaremo/props.json
 ```
 
-尺は受け側の `calculateMetadata` が props.json から決めます。台本にフレーム数を書かせない仕掛けの核です。
+尺は受け側の `calculateMetadata` が props.json から読み取ります。台本にフレーム数を書かせない仕掛けの核です。
+
+この核を守るため、**props.json は動画先頭からの絶対位置を持ちません。**
+シーンは「尺」を、セリフは「シーンの先頭からの相対位置」を持ちます。
+
+renderer は `@remotion/transitions` の `TransitionSeries` でシーンを並べます。
+TransitionSeries は子シーケンスを繋ぎのぶん重ねて前へ詰めるので、絶対位置を渡しても意味を成しません。
+**絶対位置と混ぜると props.json の数字が「実際に何フレーム目か」と食い違い**、
+字幕も口パクも音声も、各自が引き算をやり直さないと位置を知れなくなります。
+相対に振り切れば、どの値もそれが置かれる `Sequence` の中でそのまま使えます。
+
+繋ぎはシーンの先頭で行われ、**ちょうど終わったところで最初のセリフが鳴り始めます**。
+次の声が鳴り始めた時点で新しい画像が出揃っている状態を作るためで、
+逆にすると新しい声が喋っている間まだ前の画像が透けていて、同期ずれとして見えます。
+
+そのぶん各シーンは繋ぎの分だけ尺を長く申告します。重なって消えるので、総尺は変わりません。
+
+```
+総フレーム数 = Σ シーンの尺 − Σ 繋ぎの尺 = Σ 喋りの尺
+```
+
+繋ぎの長さは props.json がフレーム数で持ちます。renderer は
+`linearTiming({durationInFrames})` のように**その値をそのまま使う timing** を選んでください。
+`springTiming` のように設定から尺が決まるものを使うと、CLI の申告と食い違って音がずれます。
 
 データ駆動の弱点は「この場面だけズームしたい」がスキーマの表現力に縛られることですが、
 ここで**スキーマを拡張し続けると YAML が第二のプログラミング言語になって破綻します**。
