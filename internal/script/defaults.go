@@ -34,6 +34,10 @@ func ApplyDefaults(s *Script) {
 		gap := DefaultGapMs
 		s.Defaults.GapMs = &gap
 	}
+	if s.Defaults.SceneGapMs == nil {
+		sceneGap := DefaultSceneGapMs
+		s.Defaults.SceneGapMs = &sceneGap
+	}
 
 	for i := range s.Scenes {
 		scene := &s.Scenes[i]

@@ -11,7 +11,7 @@ import (
 //
 // 個々の期待値を並べるだけだと、TransitionSeries の尺の式と食い違ったまま
 // テストだけ通る状態になりうるので、関係のほうを直接見る。
-func checkInvariants(t *testing.T, got timeline.Timeline) {
+func checkInvariants(t *testing.T, in timeline.Input, got timeline.Timeline) {
 	t.Helper()
 
 	// TransitionSeries の尺の式: 各シーケンスの尺の合計 − トランジションの尺の合計。
@@ -25,6 +25,9 @@ func checkInvariants(t *testing.T, got timeline.Timeline) {
 			sumDuration, sumTransition, sumDuration-sumTransition, got.TotalFrames)
 	}
 
+	// シーン末尾の余白は切り上げで丸めた 1 つの値。どのシーンの尻にも同じだけ付く。
+	sceneGap := ceilFrames(in.SceneGapMs, in.FPS)
+
 	for i, scene := range got.Scenes {
 		// 先頭のシーンは繋ぐ相手がいない。
 		if i == 0 && scene.TransitionFrames != 0 {
@@ -34,16 +37,28 @@ func checkInvariants(t *testing.T, got timeline.Timeline) {
 			continue
 		}
 		// 繋ぎが終わったところで最初のセリフが鳴り始める。
+		// 余白を次のシーンの頭ではなく前のシーンの尻に置いているので、
+		// sceneGapMs をいくつにしてもこの関係は動かない。
 		if scene.Lines[0].StartFrame != scene.TransitionFrames {
 			t.Errorf("Scenes[%d]: 繋ぎ %d フレームに対して最初のセリフが %d フレーム目から",
 				i, scene.TransitionFrames, scene.Lines[0].StartFrame)
 		}
-		// セリフはシーンの尺に収まる。
+		// セリフが終わったあと、シーンの尻にはちょうど余白のぶんだけ残っている。
 		last := scene.Lines[len(scene.Lines)-1]
-		if end := last.StartFrame + last.DurationFrames; end > scene.DurationFrames {
-			t.Errorf("Scenes[%d]: セリフがシーンの尺 %d を超えている (末尾 %d)", i, scene.DurationFrames, end)
+		end := last.StartFrame + last.DurationFrames
+		if rest := scene.DurationFrames - end; rest != sceneGap {
+			t.Errorf("Scenes[%d]: セリフの終わり %d からシーンの終わり %d までが %d フレーム, want %d",
+				i, end, scene.DurationFrames, rest, sceneGap)
 		}
 	}
+}
+
+// ceilFrames はミリ秒をフレーム数へ切り上げる。timeline 側の丸めと同じ規約。
+func ceilFrames(ms, fps int) int {
+	if ms <= 0 || fps <= 0 {
+		return 0
+	}
+	return (ms*fps + 999) / 1000
 }
 
 func TestCalculate(t *testing.T) {
@@ -97,8 +112,9 @@ func TestCalculate(t *testing.T) {
 			},
 		},
 		{
-			// 余白はシーンの境目には入らない。セリフの位置はシーンごとに 0 から数え直す。
-			name: "シーンの境目には余白が入らない",
+			// gapMs はシーンの境目には効かない。境目の余白は sceneGapMs の担当。
+			// セリフの位置はシーンごとに 0 から数え直す。
+			name: "sceneGapMs が 0 ならシーンの境目に余白は入らない",
 			in: timeline.Input{
 				FPS:   30,
 				GapMs: 500, // 15 フレーム
@@ -117,6 +133,77 @@ func TestCalculate(t *testing.T) {
 					{
 						DurationFrames: 60,
 						Lines:          []timeline.LineTimeline{{StartFrame: 0, DurationFrames: 60}},
+					},
+				},
+			},
+		},
+		{
+			// 余白は前のシーンの尻に乗る。次のシーンのセリフは 0 フレーム目のまま動かない。
+			name: "シーンの境目に余白が入る",
+			in: timeline.Input{
+				FPS:        30,
+				GapMs:      500, // 15 フレーム
+				SceneGapMs: 500, // 15 フレーム
+				Scenes: []timeline.SceneInput{
+					{Lines: []timeline.LineInput{{AudioDuration: 1 * time.Second}}}, // 30 フレーム
+					{Lines: []timeline.LineInput{{AudioDuration: 2 * time.Second}}}, // 60 フレーム
+				},
+			},
+			want: timeline.Timeline{
+				TotalFrames: 120, // (30 + 15) + (60 + 15)
+				Scenes: []timeline.SceneTimeline{
+					{
+						DurationFrames: 45, // 30 + 15 (末尾の余白)
+						Lines:          []timeline.LineTimeline{{StartFrame: 0, DurationFrames: 30}},
+					},
+					{
+						DurationFrames: 75, // 60 + 15 (動画末尾の余韻)
+						Lines:          []timeline.LineTimeline{{StartFrame: 0, DurationFrames: 60}},
+					},
+				},
+			},
+		},
+		{
+			// シーンが1つでも末尾の余白は付く。最後のセリフと同時に動画が切れないようにするため。
+			name: "シーンが1つでも末尾に余白が入る",
+			in: timeline.Input{
+				FPS:        30,
+				SceneGapMs: 1000, // 30 フレーム
+				Scenes: []timeline.SceneInput{
+					{Lines: []timeline.LineInput{{AudioDuration: 1 * time.Second}}}, // 30 フレーム
+				},
+			},
+			want: timeline.Timeline{
+				TotalFrames: 60,
+				Scenes: []timeline.SceneTimeline{
+					{
+						DurationFrames: 60,
+						Lines:          []timeline.LineTimeline{{StartFrame: 0, DurationFrames: 30}},
+					},
+				},
+			},
+		},
+		{
+			// 501ms × 30fps = 15.03 → 切り上げて 16 フレーム。音声もセリフ間の余白も同じ規則。
+			name: "シーン末尾の余白も切り上げる",
+			in: timeline.Input{
+				FPS:        30,
+				SceneGapMs: 501,
+				Scenes: []timeline.SceneInput{
+					{Lines: []timeline.LineInput{{AudioDuration: 1 * time.Second}}},
+					{Lines: []timeline.LineInput{{AudioDuration: 1 * time.Second}}},
+				},
+			},
+			want: timeline.Timeline{
+				TotalFrames: 92, // (30 + 16) × 2
+				Scenes: []timeline.SceneTimeline{
+					{
+						DurationFrames: 46,
+						Lines:          []timeline.LineTimeline{{StartFrame: 0, DurationFrames: 30}},
+					},
+					{
+						DurationFrames: 46,
+						Lines:          []timeline.LineTimeline{{StartFrame: 0, DurationFrames: 30}},
 					},
 				},
 			},
@@ -258,7 +345,7 @@ func TestCalculate(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			got := timeline.Calculate(tt.in)
-			checkInvariants(t, got)
+			checkInvariants(t, tt.in, got)
 
 			if got.TotalFrames != tt.want.TotalFrames {
 				t.Errorf("TotalFrames: got %d, want %d", got.TotalFrames, tt.want.TotalFrames)
@@ -349,7 +436,7 @@ func TestCalculateTransition(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			got := timeline.Calculate(tt.in)
-			checkInvariants(t, got)
+			checkInvariants(t, tt.in, got)
 
 			// 繋ぎを何フレーム掛けても、総尺は喋りの尺の合計のまま変わらない。
 			if got.TotalFrames != 90 {
@@ -368,5 +455,131 @@ func TestCalculateTransition(t *testing.T) {
 				}
 			}
 		})
+	}
+}
+
+// TestCalculateSceneGap は sceneGapMs を変えても崩れてはいけない関係を確かめる。
+//
+// 個々のフレーム数はテーブル側で押さえているので、ここでは「余白がどちら側に乗るか」を見る。
+// 頭に乗せてしまうとセリフの位置が動き、繋ぎは前のシーンの語尾に被ったままになる。
+func TestCalculateSceneGap(t *testing.T) {
+	// 喋りの尺が 30 フレームのシーンを 3 つ。繋ぎ 400ms (12 フレーム) は喋りより短いので、
+	// 余白をいくつにしても頭打ちは働かない（比較の邪魔をしない）。
+	input := func(sceneGapMs int) timeline.Input {
+		return timeline.Input{
+			FPS:        30,
+			GapMs:      300,
+			SceneGapMs: sceneGapMs,
+			Scenes: []timeline.SceneInput{
+				{TransitionMs: 400, Lines: []timeline.LineInput{{AudioDuration: 1 * time.Second}}},
+				{TransitionMs: 400, Lines: []timeline.LineInput{{AudioDuration: 1 * time.Second}}},
+				{TransitionMs: 400, Lines: []timeline.LineInput{{AudioDuration: 1 * time.Second}}},
+			},
+		}
+	}
+
+	// 余白なし = この issue より前の挙動。ここを基準に差分を見る。
+	base := timeline.Calculate(input(0))
+	checkInvariants(t, input(0), base)
+
+	for _, sceneGapMs := range []int{0, 1, 400, 500, 1000, 5000} {
+		in := input(sceneGapMs)
+		got := timeline.Calculate(in)
+		checkInvariants(t, in, got)
+
+		gap := ceilFrames(sceneGapMs, in.FPS)
+
+		// 総尺は「喋りの尺の合計 + 余白 × シーン数」。最後のシーンの余白も含む。
+		if want := base.TotalFrames + gap*len(in.Scenes); got.TotalFrames != want {
+			t.Errorf("sceneGapMs=%d: TotalFrames: got %d, want %d", sceneGapMs, got.TotalFrames, want)
+		}
+
+		for i, scene := range got.Scenes {
+			// 伸びるのはシーンの尻だけ。繋ぎの長さもセリフの位置も動かない。
+			if want := base.Scenes[i].DurationFrames + gap; scene.DurationFrames != want {
+				t.Errorf("sceneGapMs=%d: Scenes[%d].DurationFrames: got %d, want %d",
+					sceneGapMs, i, scene.DurationFrames, want)
+			}
+			if scene.TransitionFrames != base.Scenes[i].TransitionFrames {
+				t.Errorf("sceneGapMs=%d: Scenes[%d].TransitionFrames が %d から %d へ動いた",
+					sceneGapMs, i, base.Scenes[i].TransitionFrames, scene.TransitionFrames)
+			}
+			for j, line := range scene.Lines {
+				if line != base.Scenes[i].Lines[j] {
+					t.Errorf("sceneGapMs=%d: Scenes[%d].Lines[%d] が %+v から %+v へ動いた",
+						sceneGapMs, i, j, base.Scenes[i].Lines[j], line)
+				}
+			}
+		}
+	}
+}
+
+// TestCalculateSceneGapCoversTransition は余白が繋ぎ以上あるとき、
+// フェードが前のシーンの語尾に被らないことを確かめる。issue #44 の目的そのもの。
+//
+// TransitionSeries は次のシーンの先頭 TransitionFrames を前のシーンの末尾へ重ねるので、
+// 「前のシーンの最後のセリフが終わってからシーンが終わるまで」が繋ぎ以上あればよい。
+func TestCalculateSceneGapCoversTransition(t *testing.T) {
+	tests := []struct {
+		name       string
+		sceneGapMs int
+		covered    bool
+	}{
+		{"余白が繋ぎより長い", 500, true},
+		{"余白と繋ぎが同じ長さ", 400, true},
+		{"余白が繋ぎより短い", 200, false},
+		{"余白なし", 0, false},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			in := timeline.Input{
+				FPS:        30,
+				SceneGapMs: tt.sceneGapMs,
+				Scenes: []timeline.SceneInput{
+					{Lines: []timeline.LineInput{{AudioDuration: 2 * time.Second}}},
+					{TransitionMs: 400, Lines: []timeline.LineInput{{AudioDuration: 2 * time.Second}}},
+				},
+			}
+			got := timeline.Calculate(in)
+			checkInvariants(t, in, got)
+
+			prev := got.Scenes[0]
+			last := prev.Lines[len(prev.Lines)-1]
+			silence := prev.DurationFrames - (last.StartFrame + last.DurationFrames)
+
+			if covered := silence >= got.Scenes[1].TransitionFrames; covered != tt.covered {
+				t.Errorf("前のシーンの尻の無音 %d フレームに対して繋ぎ %d フレーム: 収まった=%v, want %v",
+					silence, got.Scenes[1].TransitionFrames, covered, tt.covered)
+			}
+		})
+	}
+}
+
+// TestCalculateSceneGapWidensTransitionClamp は繋ぎの頭打ちが
+// 「前のシーンの喋り + 末尾の余白」で効くことを確かめる。
+//
+// 余白も前のシーンが自分のものとして持っている時間なので、そこまでは繋ぎに使える。
+// 喋りの尺だけで頭打ちにすると、短いシーンのあとで繋ぎが不必要に削られる。
+func TestCalculateSceneGapWidensTransitionClamp(t *testing.T) {
+	// 前のシーンの喋りは 1 フレーム (1ms を切り上げ)。繋ぎの希望は 2000ms = 60 フレーム。
+	in := timeline.Input{
+		FPS:        30,
+		SceneGapMs: 1000, // 30 フレーム
+		Scenes: []timeline.SceneInput{
+			{Lines: []timeline.LineInput{{AudioDuration: 1 * time.Millisecond}}},
+			{TransitionMs: 2000, Lines: []timeline.LineInput{{AudioDuration: 2 * time.Second}}},
+		},
+	}
+	got := timeline.Calculate(in)
+	checkInvariants(t, in, got)
+
+	// 1 (喋り) + 30 (余白) = 31 フレームまで。それ以上は前のシーンを食い尽くしてしまう。
+	if want := 31; got.Scenes[1].TransitionFrames != want {
+		t.Errorf("Scenes[1].TransitionFrames: got %d, want %d", got.Scenes[1].TransitionFrames, want)
+	}
+	// 頭打ちが効いても尺の式は崩れない（checkInvariants でも見ているが、意図として明示しておく）。
+	if want := (1 + 30) + (60 + 30); got.TotalFrames != want {
+		t.Errorf("TotalFrames: got %d, want %d", got.TotalFrames, want)
 	}
 }

@@ -18,6 +18,9 @@ import (
 // トランジションの実装（issue #10）と一緒に行う。フレームではなく ms なのは、
 // フレームで書かせると fps を変えた瞬間に体感の速さが変わってしまうためで、
 // ms → フレームの変換は CLI の仕事という層の分け方とも一致する。
+//
+// この値は script.DefaultSceneGapMs より短くしておくこと。繋ぎは前のシーンの末尾に重なるので、
+// シーン末尾の余白より長いとフェードが前のシーンの語尾に被る（→ issue #44）。
 const DefaultTransitionMs = 400
 
 // resolutions はアスペクト比から解像度への対応表。
@@ -136,9 +139,10 @@ func Build(in Input) (*Props, error) {
 // 音声の数と形がここで台本と合っているかを確かめる。
 func timelineInput(s *script.Script, audio [][]LineAudio) (timeline.Input, error) {
 	in := timeline.Input{
-		FPS:    s.Meta.FPS,
-		GapMs:  *s.Defaults.GapMs,
-		Scenes: make([]timeline.SceneInput, 0, len(s.Scenes)),
+		FPS:        s.Meta.FPS,
+		GapMs:      *s.Defaults.GapMs,
+		SceneGapMs: *s.Defaults.SceneGapMs,
+		Scenes:     make([]timeline.SceneInput, 0, len(s.Scenes)),
 	}
 
 	for i, scene := range s.Scenes {

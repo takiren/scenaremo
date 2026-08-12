@@ -24,6 +24,7 @@ func baseScript() *script.Script {
 			Speaker:    "zundamon",
 			Transition: script.TransitionFade,
 			GapMs:      intPtr(300),
+			SceneGapMs: intPtr(500),
 		},
 		Scenes: []script.Scene{
 			{
@@ -83,19 +84,20 @@ func build(t *testing.T, in props.Input) *props.Props {
 
 // TestBuildTimeline はフレーム位置が台本と実測長から決まることを確かめる。
 //
-// gap は 300ms = 9 フレーム。シーン内のセリフ間にだけ入り、シーンの境目には入らない。
+// gapMs は 300ms = 9 フレームで、シーン内のセリフ間にだけ入る。
+// sceneGapMs は 500ms = 15 フレームで、どのシーンの尻にも付く（最後のシーンは動画末尾の余韻になる）。
 // シーン 2 へは 400ms = 12 フレームの繋ぎが入るので、その分だけ尺が伸びてセリフが後ろへ下がる。
 func TestBuildTimeline(t *testing.T) {
 	got := build(t, baseInput())
 
-	// 繋ぎは前のシーンと重なって消えるので、総尺は喋りの尺の合計のまま。
-	if got.Meta.DurationInFrames != 129 { // (60 + 9 + 30) + 30
-		t.Errorf("Meta.DurationInFrames: got %d, want 129", got.Meta.DurationInFrames)
+	// 繋ぎは前のシーンと重なって消えるので、総尺は喋りとシーン末尾の余白の合計のまま。
+	if got.Meta.DurationInFrames != 159 { // (60 + 9 + 30 + 15) + (30 + 15)
+		t.Errorf("Meta.DurationInFrames: got %d, want 159", got.Meta.DurationInFrames)
 	}
 
 	wantScenes := []int{
-		99, // 60 + 9 (余白) + 30。先頭のシーンなので繋ぎは無い
-		42, // 30 + 12 (繋ぎ)
+		114, // 60 + 9 (セリフ間) + 30 + 15 (シーン末尾)。先頭のシーンなので繋ぎは無い
+		57,  // 30 + 15 (シーン末尾) + 12 (繋ぎ)
 	}
 	for i, want := range wantScenes {
 		if got.Scenes[i].DurationInFrames != want {
@@ -164,13 +166,94 @@ func TestBuildTransition(t *testing.T) {
 	if d := withoutTransition.Scenes[1].Transition.DurationInFrames; d != 0 {
 		t.Errorf("transition: none なのに長さが %d ある", d)
 	}
-	// 繋ぎが無い分シーンの尺は短くなり、セリフは先頭から鳴る。
-	if withoutTransition.Scenes[1].DurationInFrames != 30 {
-		t.Errorf("Scenes[1].DurationInFrames: got %d, want 30", withoutTransition.Scenes[1].DurationInFrames)
+	// 繋ぎが無い分シーンの尺は短くなり、セリフは先頭から鳴る。末尾の余白 15 フレームは残る。
+	if withoutTransition.Scenes[1].DurationInFrames != 45 {
+		t.Errorf("Scenes[1].DurationInFrames: got %d, want 45", withoutTransition.Scenes[1].DurationInFrames)
 	}
 	if withoutTransition.Scenes[1].Lines[0].StartFrame != 0 {
 		t.Errorf("Scenes[1].Lines[0].StartFrame: got %d, want 0",
 			withoutTransition.Scenes[1].Lines[0].StartFrame)
+	}
+}
+
+// TestBuildSceneGap は defaults.sceneGapMs がシーンの尻と動画の末尾へ効くことを確かめる（→ issue #44）。
+//
+// 0 のときの期待値は sceneGapMs を入れる前の実装が出していた値そのもの。
+// 既存の台本の見え方を変えていないことを、ここで固定して見張る。
+func TestBuildSceneGap(t *testing.T) {
+	tests := []struct {
+		name       string
+		sceneGapMs int
+		total      int
+		scenes     []int
+		starts     [][]int
+	}{
+		{
+			// この issue より前の挙動。最後のセリフの終了と同時に動画が終わる。
+			name:       "0 なら以前の挙動のまま",
+			sceneGapMs: 0,
+			total:      129, // (60 + 9 + 30) + 30
+			scenes:     []int{99, 42},
+			starts:     [][]int{{0, 69}, {12}},
+		},
+		{
+			name:       "既定の 500ms",
+			sceneGapMs: 500, // 15 フレーム
+			total:      159,
+			scenes:     []int{114, 57},
+			starts:     [][]int{{0, 69}, {12}},
+		},
+		{
+			// 余白を伸ばしてもセリフの位置（シーン先頭からの相対）は動かない。
+			// 余白は次のシーンの頭ではなく前のシーンの尻に乗るため。
+			name:       "1000ms",
+			sceneGapMs: 1000, // 30 フレーム
+			total:      189,
+			scenes:     []int{129, 72},
+			starts:     [][]int{{0, 69}, {12}},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			in := baseInput()
+			in.Script.Defaults.SceneGapMs = intPtr(tt.sceneGapMs)
+			got := build(t, in)
+
+			if got.Meta.DurationInFrames != tt.total {
+				t.Errorf("Meta.DurationInFrames: got %d, want %d", got.Meta.DurationInFrames, tt.total)
+			}
+			for i, want := range tt.scenes {
+				if got.Scenes[i].DurationInFrames != want {
+					t.Errorf("Scenes[%d].DurationInFrames: got %d, want %d",
+						i, got.Scenes[i].DurationInFrames, want)
+				}
+				for j, wantStart := range tt.starts[i] {
+					if start := got.Scenes[i].Lines[j].StartFrame; start != wantStart {
+						t.Errorf("Scenes[%d].Lines[%d].StartFrame: got %d, want %d", i, j, start, wantStart)
+					}
+				}
+			}
+
+			// 動画の末尾: 最後のセリフが終わってから、余白のぶんだけ残っている。
+			last := got.Scenes[len(got.Scenes)-1]
+			lastLine := last.Lines[len(last.Lines)-1]
+			gapFrames := (tt.sceneGapMs*got.Meta.FPS + 999) / 1000
+			if rest := last.DurationInFrames - (lastLine.StartFrame + lastLine.DurationInFrames); rest != gapFrames {
+				t.Errorf("動画末尾の余白: got %d, want %d", rest, gapFrames)
+			}
+
+			// 余白を足しても TransitionSeries の尺の式は崩れない。ここが崩れると音がずれる。
+			sumDuration, sumTransition := 0, 0
+			for _, scene := range got.Scenes {
+				sumDuration += scene.DurationInFrames
+				sumTransition += scene.Transition.DurationInFrames
+			}
+			if sumDuration-sumTransition != got.Meta.DurationInFrames {
+				t.Errorf("尺の式が合わない: Σ尺 %d − Σ繋ぎ %d = %d, meta.durationInFrames は %d",
+					sumDuration, sumTransition, sumDuration-sumTransition, got.Meta.DurationInFrames)
+			}
+		})
 	}
 }
 
@@ -380,5 +463,9 @@ func TestBuildFillsDefaults(t *testing.T) {
 	// 話者を省略したセリフには defaults.speaker が入る。字幕の話者名表示に使える。
 	if got.Scenes[0].Lines[0].Speaker != "zundamon" {
 		t.Errorf("Scenes[0].Lines[0].Speaker: got %q, want \"zundamon\"", got.Scenes[0].Lines[0].Speaker)
+	}
+	// gapMs / sceneGapMs も既定値で埋まる。埋め忘れると余白が消えて詰まった動画になる。
+	if got.Meta.DurationInFrames != 159 { // gapMs 300 (9) と sceneGapMs 500 (15) が効いた尺
+		t.Errorf("Meta.DurationInFrames: got %d, want 159 (既定の余白が入った尺)", got.Meta.DurationInFrames)
 	}
 }

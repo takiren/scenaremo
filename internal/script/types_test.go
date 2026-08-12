@@ -62,6 +62,9 @@ func TestUnmarshalMinimalExample(t *testing.T) {
 	if got.Defaults.GapMs == nil || *got.Defaults.GapMs != 300 {
 		t.Errorf("defaults.gapMs = %v", got.Defaults.GapMs)
 	}
+	if got.Defaults.SceneGapMs == nil || *got.Defaults.SceneGapMs != 500 {
+		t.Errorf("defaults.sceneGapMs = %v", got.Defaults.SceneGapMs)
+	}
 
 	if len(got.Scenes) != 2 {
 		t.Fatalf("scenes の数 = %d", len(got.Scenes))
@@ -92,7 +95,7 @@ func TestUnmarshalReservedFields(t *testing.T) {
 	const src = `
 meta: {title: t}
 speakers: {zundamon: {styleId: 3}}
-defaults: {gapMs: 0}
+defaults: {gapMs: 0, sceneGapMs: 0}
 scenes:
   - image: a.png
     component: zoom
@@ -104,9 +107,12 @@ scenes:
 		t.Fatalf("台本の読み込みに失敗した: %v", err)
 	}
 
-	// gapMs は 0 の明示と未指定を区別できること。
+	// gapMs / sceneGapMs は 0 の明示と未指定を区別できること。
 	if got.Defaults.GapMs == nil || *got.Defaults.GapMs != 0 {
 		t.Errorf("defaults.gapMs = %v, want 0 の明示", got.Defaults.GapMs)
+	}
+	if got.Defaults.SceneGapMs == nil || *got.Defaults.SceneGapMs != 0 {
+		t.Errorf("defaults.sceneGapMs = %v, want 0 の明示", got.Defaults.SceneGapMs)
 	}
 	if got.Scenes[0].Component != "zoom" {
 		t.Errorf("component = %q", got.Scenes[0].Component)
@@ -342,6 +348,7 @@ func TestGoConstantsMatchSchema(t *testing.T) {
 		{"speakers[].engine", objAt(t, doc, "$defs", "speaker", "properties", "engine"), string(script.DefaultEngine)},
 		{"defaults.transition", objAt(t, doc, "$defs", "defaults", "properties", "transition"), string(script.DefaultTransition)},
 		{"defaults.gapMs", objAt(t, doc, "$defs", "defaults", "properties", "gapMs"), float64(script.DefaultGapMs)},
+		{"defaults.sceneGapMs", objAt(t, doc, "$defs", "defaults", "properties", "sceneGapMs"), float64(script.DefaultSceneGapMs)},
 		{"scenes[].transition", objAt(t, doc, "$defs", "scene", "properties", "transition"), string(script.DefaultTransition)},
 		{"scenes[].component", objAt(t, doc, "$defs", "scene", "properties", "component"), script.DefaultComponent},
 	}
