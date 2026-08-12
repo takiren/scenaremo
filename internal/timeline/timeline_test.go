@@ -9,25 +9,34 @@ import (
 
 // checkInvariants はどの入力でも成り立つべき性質を確かめる。
 //
-// 個々の期待値を並べるだけだと、関係のほうが崩れていてもテストだけ通る状態になりうる。
+// 個々の期待値を並べるだけだと、TransitionSeries の尺の式と食い違ったまま
+// テストだけ通る状態になりうるので、関係のほうを直接見る。
 func checkInvariants(t *testing.T, got timeline.Timeline) {
 	t.Helper()
 
-	sumDuration := 0
+	// TransitionSeries の尺の式: 各シーケンスの尺の合計 − トランジションの尺の合計。
+	sumDuration, sumTransition := 0, 0
 	for _, scene := range got.Scenes {
 		sumDuration += scene.DurationFrames
+		sumTransition += scene.TransitionFrames
 	}
-	if sumDuration != got.TotalFrames {
-		t.Errorf("尺の合計が合わない: Σ尺 %d, TotalFrames は %d", sumDuration, got.TotalFrames)
+	if sumDuration-sumTransition != got.TotalFrames {
+		t.Errorf("尺の式が合わない: Σ尺 %d − Σ繋ぎ %d = %d, TotalFrames は %d",
+			sumDuration, sumTransition, sumDuration-sumTransition, got.TotalFrames)
 	}
 
 	for i, scene := range got.Scenes {
+		// 先頭のシーンは繋ぐ相手がいない。
+		if i == 0 && scene.TransitionFrames != 0 {
+			t.Errorf("Scenes[0].TransitionFrames: got %d, want 0", scene.TransitionFrames)
+		}
 		if len(scene.Lines) == 0 {
 			continue
 		}
-		// セリフはシーンの先頭から数え直す。
-		if scene.Lines[0].StartFrame != 0 {
-			t.Errorf("Scenes[%d]: 最初のセリフが %d フレーム目から", i, scene.Lines[0].StartFrame)
+		// 繋ぎが終わったところで最初のセリフが鳴り始める。
+		if scene.Lines[0].StartFrame != scene.TransitionFrames {
+			t.Errorf("Scenes[%d]: 繋ぎ %d フレームに対して最初のセリフが %d フレーム目から",
+				i, scene.TransitionFrames, scene.Lines[0].StartFrame)
 		}
 		// セリフはシーンの尺に収まる。
 		last := scene.Lines[len(scene.Lines)-1]
@@ -263,6 +272,10 @@ func TestCalculate(t *testing.T) {
 					t.Errorf("Scenes[%d].DurationFrames: got %d, want %d",
 						i, gotScene.DurationFrames, wantScene.DurationFrames)
 				}
+				if gotScene.TransitionFrames != wantScene.TransitionFrames {
+					t.Errorf("Scenes[%d].TransitionFrames: got %d, want %d",
+						i, gotScene.TransitionFrames, wantScene.TransitionFrames)
+				}
 				if len(gotScene.Lines) != len(wantScene.Lines) {
 					t.Fatalf("Scenes[%d] のセリフの数: got %d, want %d", i, len(gotScene.Lines), len(wantScene.Lines))
 				}
@@ -270,6 +283,88 @@ func TestCalculate(t *testing.T) {
 					if gotLine != wantScene.Lines[j] {
 						t.Errorf("Scenes[%d].Lines[%d]: got %+v, want %+v", i, j, gotLine, wantScene.Lines[j])
 					}
+				}
+			}
+		})
+	}
+}
+
+// TestCalculateTransition は繋ぎの長さと、それがシーンの尺へ織り込まれることを確かめる。
+func TestCalculateTransition(t *testing.T) {
+	// 1 秒 = 30 フレームのシーンを 3 つ並べた土台。喋りの尺はどのシーンも 30。
+	scenes := func(ms ...int) []timeline.SceneInput {
+		in := make([]timeline.SceneInput, 0, len(ms))
+		for _, m := range ms {
+			in = append(in, timeline.SceneInput{
+				TransitionMs: m,
+				Lines:        []timeline.LineInput{{AudioDuration: 1 * time.Second}},
+			})
+		}
+		return in
+	}
+
+	tests := []struct {
+		name       string
+		in         timeline.Input
+		transition []int // 各シーンへ入る繋ぎのフレーム数
+		duration   []int // 各シーンの DurationFrames
+	}{
+		{
+			// 先頭のシーンは繋ぐ相手がいないので、指定があっても 0 になる。
+			name:       "先頭シーンは繋がない",
+			in:         timeline.Input{FPS: 30, Scenes: scenes(500, 0, 0)},
+			transition: []int{0, 0, 0},
+			duration:   []int{30, 30, 30},
+		},
+		{
+			// 400ms = 12 フレーム。重なる分をシーンの尺へ足しておく。
+			name:       "繋ぎの分だけシーンの尺が伸びる",
+			in:         timeline.Input{FPS: 30, Scenes: scenes(0, 400, 400)},
+			transition: []int{0, 12, 12},
+			duration:   []int{30, 42, 42},
+		},
+		{
+			name:       "0ms なら繋がない",
+			in:         timeline.Input{FPS: 30, Scenes: scenes(0, 0, 0)},
+			transition: []int{0, 0, 0},
+			duration:   []int{30, 30, 30},
+		},
+		{
+			// TransitionSeries の制約により、繋ぎは前のシーケンスより長くできない。
+			// 2 秒 = 60 フレームは前のシーンの喋り (30) より長いので頭打ちになる。
+			name:       "前のシーンより長い繋ぎは頭打ちにする",
+			in:         timeline.Input{FPS: 30, Scenes: scenes(0, 2000, 2000)},
+			transition: []int{0, 30, 30},
+			duration:   []int{30, 60, 60},
+		},
+		{
+			// 401ms × 30fps = 12.03 → 切り上げて 13 フレーム。
+			name:       "繋ぎのフレーム数も切り上げる",
+			in:         timeline.Input{FPS: 30, Scenes: scenes(0, 401, 0)},
+			transition: []int{0, 13, 0},
+			duration:   []int{30, 43, 30},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got := timeline.Calculate(tt.in)
+			checkInvariants(t, got)
+
+			// 繋ぎを何フレーム掛けても、総尺は喋りの尺の合計のまま変わらない。
+			if got.TotalFrames != 90 {
+				t.Errorf("TotalFrames: got %d, want 90 (繋ぎは総尺を変えないはず)", got.TotalFrames)
+			}
+			for i, want := range tt.transition {
+				if got.Scenes[i].TransitionFrames != want {
+					t.Errorf("Scenes[%d].TransitionFrames: got %d, want %d",
+						i, got.Scenes[i].TransitionFrames, want)
+				}
+			}
+			for i, want := range tt.duration {
+				if got.Scenes[i].DurationFrames != want {
+					t.Errorf("Scenes[%d].DurationFrames: got %d, want %d",
+						i, got.Scenes[i].DurationFrames, want)
 				}
 			}
 		})
