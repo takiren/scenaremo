@@ -19,6 +19,21 @@
 //
 // なお「余白ゼロ」は実際には無音ゼロではない。VOICEVOX の AudioQuery は既定で前後に 0.1 秒ずつ
 // 無音を入れるため、各 wav にはその分が焼き込まれている（→ issue #44）。
+// 実効の余白は指定値 + 200ms になり、0 を指定しても間は消えない。
+//
+// # 余白の置き場所
+//
+// 余白は 2 種類ある。セリフとセリフの間 (GapMs) と、シーンの末尾 (SceneGapMs) である。
+//
+// シーンの境目の余白は「次のシーンの頭」ではなく「前のシーンの尻」に付ける。
+// 繋ぎは次のシーンの先頭で行われ、TransitionSeries はそのぶんを前のシーンの末尾に重ねるので、
+// 余白を尻に置いておくと繋ぎが無音の中で完結する。頭に置くと繋ぎは結局前のシーンの語尾に被り、
+// 「無音の間に絵が切り替わる」という一番きれいな形にならない（→ issue #44）。
+// 尻に置くほうが「最後の一言を言い終えた絵をしばらく見せる」という見え方にもなる。
+//
+// 末尾の余白は最後のシーンにも同じように付ける。「シーンとシーンの間」と「動画の末尾」は
+// どちらも『喋り終わってからシーンが終わるまで』であって、別の値にする理由が無いためである。
+// おかげで最後のセリフの終了と同時に動画が切れることもなくなる（→ issue #44）。
 //
 // # 座標系
 //
@@ -44,9 +59,12 @@ type Input struct {
 	// FPS はフレームレート。
 	FPS int
 	// GapMs は同じシーン内のセリフとセリフの間に入れる余白（ミリ秒）。
-	//
-	// シーンとシーンの間には今のところ余白を入れない（→ issue #44）。
 	GapMs int
+	// SceneGapMs はシーンの末尾に入れる余白（ミリ秒）。
+	//
+	// シーンとシーンの間の間（ま）と、動画末尾の余韻の両方がこの値で決まる。
+	// なぜ前のシーンの尻に付けるのかはパッケージのコメント（余白の置き場所）を参照。
+	SceneGapMs int
 	// Scenes はシーンの並び。台本の scenes と同じ順序・同じ個数。
 	Scenes []SceneInput
 }
@@ -72,7 +90,7 @@ type Timeline struct {
 	//
 	// TransitionSeries の尺の式（各シーケンスの尺の合計 − トランジションの尺の合計）と一致する。
 	// トランジションは前のシーンの尻を食うので、繋ぎを増やしても総尺は変わらず、
-	// 喋りの尺の合計そのものになる。
+	// 喋りとシーン末尾の余白の合計そのものになる。
 	// クレジットシーンの分はここには含まれない（尺を持つかどうかは props 側の判断のため）。
 	TotalFrames int
 	// Scenes は各シーンの尺。入力と同じ順序・同じ個数。
@@ -83,7 +101,7 @@ type Timeline struct {
 type SceneTimeline struct {
 	// DurationFrames は TransitionSeries.Sequence へ渡す尺。
 	//
-	// 喋りの尺そのものではなく、そこへ TransitionFrames を足した値になる。
+	// 喋りの尺そのものではなく、そこへ末尾の余白 (Input.SceneGapMs) と TransitionFrames を足した値になる。
 	// TransitionSeries は隣り合うシーケンスを繋ぎのぶん重ねて詰めるので、
 	// 重なる分をあらかじめ申告しておかないと、シーンが繋ぎのぶんだけ前へずれてしまう。
 	DurationFrames int
@@ -111,10 +129,11 @@ type LineTimeline struct {
 // Calculate は実測長から各シーンとセリフのフレーム位置を確定させる。
 func Calculate(in Input) Timeline {
 	gapFrames := framesFor(time.Duration(in.GapMs)*time.Millisecond, in.FPS)
+	sceneGapFrames := framesFor(time.Duration(in.SceneGapMs)*time.Millisecond, in.FPS)
 
-	// まず各シーンについて「喋りの尺」と、その中でのセリフの位置を出す。
-	// 繋ぎの分をずらすのは、隣のシーンの喋りの尺が分かってからでないと決められない。
-	speech := make([]int, len(in.Scenes))
+	// まず各シーンについて「繋ぎを除いた尺」と、その中でのセリフの位置を出す。
+	// 繋ぎの分をずらすのは、隣のシーンの尺が分かってからでないと決められない。
+	body := make([]int, len(in.Scenes))
 	lines := make([][]LineTimeline, len(in.Scenes))
 	for i, scene := range in.Scenes {
 		current := 0
@@ -127,19 +146,21 @@ func Calculate(in Input) Timeline {
 			})
 			current += duration
 
-			// 余白はセリフとセリフの間にだけ入れる。シーンの末尾に付けてしまうと、
-			// シーンの尺に喋っていない時間が混ざり、シーンの境目がどこなのか分からなくなる。
+			// セリフ間の余白は文の切れ目のためのもので、シーンの切れ目には SceneGapMs を使う。
+			// 末尾にも入れてしまうと、話題の切れ目に 2 種類の余白が積み上がって効きが読めなくなる。
 			if j < len(scene.Lines)-1 {
 				current += gapFrames
 			}
 		}
-		speech[i] = current
+		// シーンの末尾に余白を付ける。これがシーンとシーンの間の間（ま）になり、
+		// 最後のシーンではそのまま動画末尾の余韻になる（→ パッケージのコメント「余白の置き場所」）。
+		body[i] = current + sceneGapFrames
 		lines[i] = placed
 	}
 
 	out := Timeline{Scenes: make([]SceneTimeline, 0, len(in.Scenes))}
 	for i, scene := range in.Scenes {
-		transition := transitionFrames(scene, i, speech, in.FPS)
+		transition := transitionFrames(scene, i, body, in.FPS)
 
 		// 繋ぎはシーケンスの先頭で行われるので、セリフはその分だけ後ろへ下がる。
 		// こうすると繋ぎが終わった瞬間に最初のセリフが鳴り始める。
@@ -148,18 +169,19 @@ func Calculate(in Input) Timeline {
 		}
 
 		out.Scenes = append(out.Scenes, SceneTimeline{
-			DurationFrames:   speech[i] + transition,
+			DurationFrames:   body[i] + transition,
 			TransitionFrames: transition,
 			Lines:            lines[i],
 		})
-		// 総尺は喋りの尺の合計。繋ぎのぶんは前のシーンと重なって消えるので足さない。
-		out.TotalFrames += speech[i]
+		// 総尺は喋りと末尾の余白の合計。繋ぎのぶんは前のシーンと重なって消えるので足さない。
+		out.TotalFrames += body[i]
 	}
 	return out
 }
 
 // transitionFrames はシーンへ入る繋ぎの長さを決める。
-func transitionFrames(scene SceneInput, index int, speech []int, fps int) int {
+// body は各シーンの繋ぎを除いた尺（喋り + 末尾の余白）。
+func transitionFrames(scene SceneInput, index int, body []int, fps int) int {
 	// 先頭のシーンは繋ぐ相手がいない。黒からのフェードインもしない（冒頭の喋りに被るだけのため）。
 	if index == 0 {
 		return 0
@@ -168,10 +190,14 @@ func transitionFrames(scene SceneInput, index int, speech []int, fps int) int {
 	frames := framesFor(time.Duration(scene.TransitionMs)*time.Millisecond, fps)
 
 	// TransitionSeries の制約: 繋ぎは前後どちらのシーケンスよりも長くてはいけない。
-	// 後ろ側は DurationFrames が喋りの尺に繋ぎを足した値になるので自動的に満たされる。
-	// 前側は満たされないことがあるため、前のシーンの喋りの尺で頭打ちにする。
+	// 後ろ側は DurationFrames が自分の尺に繋ぎを足した値になるので自動的に満たされる。
+	// 前側は満たされないことがあるため、前のシーンの尺で頭打ちにする。
 	// これは「シーン 1 つを飛び越えて 3 枚が重なる」ことを防ぐ意味でもある。
-	return min(frames, speech[index-1])
+	//
+	// 頭打ちの相手を「喋りの尺」ではなく「喋り + 末尾の余白」にしているのは、
+	// 余白も前のシーンが自分のものとして持っている時間だからである。
+	// 繋ぎが余白に収まっているうちは、フェードは無音の中だけで完結する。
+	return min(frames, body[index-1])
 }
 
 // framesFor は時間をフレーム数へ直す。切り上げる理由はパッケージのコメントを参照。

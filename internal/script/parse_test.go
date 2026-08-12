@@ -144,6 +144,10 @@ scenes:
 	if s.Defaults.GapMs == nil || *s.Defaults.GapMs != script.DefaultGapMs {
 		t.Errorf("defaults.gapMs = %v", s.Defaults.GapMs)
 	}
+	// sceneGapMs を書いていない台本（この issue より前に書かれたもの）にも既定値が入る。
+	if s.Defaults.SceneGapMs == nil || *s.Defaults.SceneGapMs != script.DefaultSceneGapMs {
+		t.Errorf("defaults.sceneGapMs = %v", s.Defaults.SceneGapMs)
+	}
 	if s.Scenes[0].Transition != script.DefaultTransition {
 		t.Errorf("scenes[0].transition = %q", s.Scenes[0].Transition)
 	}
@@ -165,6 +169,7 @@ defaults:
   speaker: zundamon
   transition: none
   gapMs: 0
+  sceneGapMs: 0
 scenes:
   - image: a.png
     transition: fade
@@ -182,9 +187,12 @@ scenes:
 	if s.Defaults.Transition != script.TransitionNone {
 		t.Errorf("defaults.transition = %q", s.Defaults.Transition)
 	}
-	// gapMs: 0 は「余白なし」の明示であって未指定ではない。
+	// gapMs: 0 は「余白なし」の明示であって未指定ではない。sceneGapMs も同じ。
 	if s.Defaults.GapMs == nil || *s.Defaults.GapMs != 0 {
 		t.Errorf("defaults.gapMs = %v, want 0", s.Defaults.GapMs)
+	}
+	if s.Defaults.SceneGapMs == nil || *s.Defaults.SceneGapMs != 0 {
+		t.Errorf("defaults.sceneGapMs = %v, want 0", s.Defaults.SceneGapMs)
 	}
 	if s.Scenes[0].Transition != script.TransitionFade {
 		t.Errorf("scenes[0].transition = %q", s.Scenes[0].Transition)

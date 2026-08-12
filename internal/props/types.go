@@ -99,7 +99,8 @@ type Scene struct {
 
 	// DurationInFrames は TransitionSeries.Sequence へ渡す尺。
 	//
-	// 喋りの尺そのものではなく、そこへ Transition.DurationInFrames を足した値になる。
+	// 喋りの尺そのものではなく、そこへシーン末尾の余白（台本の defaults.sceneGapMs）と
+	// Transition.DurationInFrames を足した値になる。
 	// TransitionSeries は隣り合うシーケンスを繋ぎのぶん重ねて詰めるので、
 	// 重なる分をあらかじめ申告しておかないと、シーンが繋ぎのぶんだけ前へずれてしまう。
 	DurationInFrames int `json:"durationInFrames"`

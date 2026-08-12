@@ -18,7 +18,8 @@ speakers:
 defaults:
   speaker: zundamon
   transition: fade
-  gapMs: 300            # セリフ間の余白
+  gapMs: 300            # 同じシーン内のセリフ間の余白
+  sceneGapMs: 100       # シーンの末尾（＝シーン間と動画末尾）の余白
 
 scenes:
   - image: assets/01-title.png

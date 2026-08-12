@@ -42,6 +42,15 @@ const (
 	DefaultTransition = TransitionFade
 	// DefaultGapMs は defaults.gapMs の既定値（ミリ秒）。
 	DefaultGapMs = 300
+	// DefaultSceneGapMs は defaults.sceneGapMs の既定値（ミリ秒）。
+	//
+	// シーンの切り替わりに最小限の間を作るための値。VOICEVOX が wav の前後に
+	// 0.1 秒ずつ無音を焼き込むため、実効の余白は約 300ms になる。
+	//
+	// DefaultTransitionMs (400) より短いので、既定のままではフェードの一部が
+	// 前のシーンの語尾に重なる。フェードを無音の中で完結させたい場合は、
+	// トランジションより長い値を台本で指定すること（→ issue #44）。
+	DefaultSceneGapMs = 100
 	// DefaultComponent は scenes[].component の既定値。renderer 側 registry のキー。
 	DefaultComponent = "default"
 )
@@ -110,9 +119,14 @@ type Defaults struct {
 	// 空なら DefaultTransition。
 	Transition Transition `yaml:"transition,omitempty" json:"transition,omitempty"`
 
-	// GapMs はセリフ間に入れる余白（ミリ秒）。
+	// GapMs は同じシーンの中でセリフ間に入れる余白（ミリ秒）。
 	// 0 を明示する（余白なし）ことと未指定を区別するためポインタで持つ。nil なら DefaultGapMs。
 	GapMs *int `yaml:"gapMs,omitempty" json:"gapMs,omitempty"`
+
+	// SceneGapMs はシーンの末尾に入れる余白（ミリ秒）。
+	// シーンとシーンの間の間（ま）と、動画末尾の余韻の両方がこの値で決まる。
+	// GapMs と同じ理由でポインタで持つ。nil なら DefaultSceneGapMs。
+	SceneGapMs *int `yaml:"sceneGapMs,omitempty" json:"sceneGapMs,omitempty"`
 }
 
 // Scene は画像1枚と、その間に喋るセリフの集まりを表す。

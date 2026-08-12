@@ -122,7 +122,7 @@ scenes: [{image: a.png, lines: [{speaker: ずんだもん, text: こんにちは
 meta: {title: t, aspect: "9:16", fps: 60}
 speakers:
   metan: {engine: voicevox, styleId: 2, speedScale: 1.05, pitchScale: -0.05, intonationScale: 1.2, volumeScale: 0.8}
-defaults: {speaker: metan, transition: none, gapMs: 0}
+defaults: {speaker: metan, transition: none, gapMs: 0, sceneGapMs: 0}
 scenes: [{image: a.png, transition: none, lines: [{text: こんにちは}]}]
 `,
 		},
@@ -327,6 +327,16 @@ scenes: [{image: a.png, lines: [{text: こんにちは}]}]
 meta: {title: t}
 speakers: {zundamon: {styleId: 3}}
 defaults: {gapMs: -1}
+scenes: [{image: a.png, lines: [{text: こんにちは}]}]
+`,
+		},
+		{
+			name: "sceneGapMs が負",
+			want: "/defaults/sceneGapMs:minimum",
+			yaml: `
+meta: {title: t}
+speakers: {zundamon: {styleId: 3}}
+defaults: {sceneGapMs: -1}
 scenes: [{image: a.png, lines: [{text: こんにちは}]}]
 `,
 		},
