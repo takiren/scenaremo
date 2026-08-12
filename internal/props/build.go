@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"path"
 	"path/filepath"
+	"slices"
 	"time"
 
 	"github.com/takiren/scenaremo/internal/script"
@@ -28,12 +29,32 @@ var resolutions = map[script.Aspect]struct{ width, height int }{
 	script.Aspect9x16: {1080, 1920},
 }
 
+// creditEngineNames はクレジット表記に使うエンジンの名前。
+//
+// tts.DisplayName とは別に持つ。あちらはエラーメッセージ用で "VOICEVOX ENGINE" のように
+// ソフトウェア名を返すが、クレジットに書くべきなのは規約が定める "VOICEVOX" のほうであるため。
+var creditEngineNames = map[script.Engine]string{
+	script.EngineVoicevox: "VOICEVOX",
+}
+
 // LineAudio はセリフ1つ分の合成結果。
 type LineAudio struct {
 	// Path は props.json に載せる wav のパス。動画ディレクトリからの相対で / 区切り。
 	Path string
 	// Duration は wav の実測長。フレーム数はここから決まる。
 	Duration time.Duration
+}
+
+// SpeakerCredit は話者エイリアス1件のクレジット情報。
+//
+// スタイル ID から話者名を引くにはエンジンへの問い合わせが要るため、Build の入力として受け取る。
+// ここで自分から問い合わせてしまうと、props.json の組み立てがネットワークに依存し、
+// エンジンを起動せずにテストできなくなる。
+type SpeakerCredit struct {
+	// Name は話者（キャラクター）の表示名。エンジンの /speakers が返す名前。
+	Name string
+	// UUID はエンジンが返す話者の UUID。空でもよいが、あれば同名の別話者を取り違えずに済む。
+	UUID string
 }
 
 // Input は props.json を組み立てるための材料。
@@ -43,6 +64,9 @@ type Input struct {
 
 	// Audio は各セリフの合成結果。Script.Scenes と同じ形（シーンの数、各シーンのセリフの数）であること。
 	Audio [][]LineAudio
+
+	// Credits は話者エイリアスごとのクレジット情報。台本で使われるすべての話者について必要。
+	Credits map[string]SpeakerCredit
 
 	// GeneratedBy は生成した scenaremo のバージョン。
 	GeneratedBy string
@@ -84,19 +108,27 @@ func Build(in Input) (*Props, error) {
 		return nil, err
 	}
 
+	credits, err := buildCredits(s, in.Credits)
+	if err != nil {
+		return nil, err
+	}
+
 	return &Props{
 		Version:     Version,
 		GeneratedBy: in.GeneratedBy,
 		Note:        Note,
 		Meta: Meta{
-			Title:            s.Meta.Title,
-			Aspect:           string(s.Meta.Aspect),
-			Width:            size.width,
-			Height:           size.height,
-			FPS:              s.Meta.FPS,
-			DurationInFrames: tl.TotalFrames,
+			Title:  s.Meta.Title,
+			Aspect: string(s.Meta.Aspect),
+			Width:  size.width,
+			Height: size.height,
+			FPS:    s.Meta.FPS,
+			// クレジットシーンの分まで含めた最終的な尺。今はまだ尺を持たないが、
+			// 足し方をここで決めておけば issue #17 で長さを入れるだけで済む。
+			DurationInFrames: tl.TotalFrames + credits.DurationInFrames,
 		},
-		Scenes: scenes,
+		Scenes:  scenes,
+		Credits: credits,
 	}, nil
 }
 
@@ -202,4 +234,79 @@ func assetPath(p string) (string, error) {
 			"props.json は別のマシンでも読めるように絶対パスを持ちません)", p)
 	}
 	return slashed, nil
+}
+
+// buildCredits は台本で使われた話者からクレジットを集計する。
+//
+// 集計の単位はスタイルではなくキャラクターにする。規約が求めているのは音声ライブラリ単位の表記なので、
+// 同じ話者のノーマルとあまあまを使い分けても、書くべきクレジットは1つだからである。
+func buildCredits(s *script.Script, resolved map[string]SpeakerCredit) (Credits, error) {
+	// 同名の別話者を1件にまとめてしまわないよう、UUID が分かるならそちらを優先して数える。
+	type key struct{ engine, identity string }
+
+	var order []key
+	entries := make(map[key]*Entry)
+
+	for i, scene := range s.Scenes {
+		for j, line := range scene.Lines {
+			speaker, ok := s.Speakers[line.Speaker]
+			if !ok {
+				return Credits{}, fmt.Errorf("scenes[%d].lines[%d]: 話者 %q が speakers に定義されていません",
+					i, j, line.Speaker)
+			}
+			credit, ok := resolved[line.Speaker]
+			if !ok || credit.Name == "" {
+				// 黙って飛ばすとクレジットが1件足りない props.json ができてしまう。
+				// 表記漏れは利用者の事故に直結するので、揃っていなければ生成しない。
+				return Credits{}, fmt.Errorf("話者 %q のクレジット情報がありません。"+
+					"クレジットの表記漏れは利用者の事故に直結するため、"+
+					"使用したすべての話者の名前が揃うまで props.json は生成しません", line.Speaker)
+			}
+
+			k := key{engine: string(speaker.Engine), identity: credit.UUID}
+			if k.identity == "" {
+				k.identity = credit.Name
+			}
+
+			entry, seen := entries[k]
+			if !seen {
+				entry = &Entry{
+					Engine:      string(speaker.Engine),
+					SpeakerName: credit.Name,
+					SpeakerUUID: credit.UUID,
+					Text:        creditText(speaker.Engine, credit.Name),
+				}
+				entries[k] = entry
+				order = append(order, k)
+			}
+			if !slices.Contains(entry.StyleIDs, speaker.StyleID) {
+				entry.StyleIDs = append(entry.StyleIDs, speaker.StyleID)
+			}
+		}
+	}
+
+	// 並びは台本での登場順。map をそのまま回すと build のたびに順序が変わり、
+	// 同じ台本から違う props.json が出てしまう。
+	out := make([]Entry, 0, len(order))
+	for _, k := range order {
+		entry := entries[k]
+		slices.Sort(entry.StyleIDs)
+		out = append(out, *entry)
+	}
+
+	return Credits{
+		// クレジットシーンはまだ尺を持たない（→ issue #17）。
+		// 0 は「表示しない」を表し、meta.durationInFrames もその分だけ伸びない。
+		DurationInFrames: 0,
+		Entries:          out,
+	}, nil
+}
+
+// creditText はそのまま表示できるクレジット表記を作る。
+func creditText(engine script.Engine, name string) string {
+	label, ok := creditEngineNames[engine]
+	if !ok {
+		label = string(engine)
+	}
+	return label + ":" + name
 }

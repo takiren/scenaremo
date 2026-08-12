@@ -56,10 +56,18 @@ func baseAudio() [][]props.LineAudio {
 	}
 }
 
+func baseCredits() map[string]props.SpeakerCredit {
+	return map[string]props.SpeakerCredit{
+		"zundamon": {Name: "ずんだもん", UUID: "uuid-zundamon"},
+		"metan":    {Name: "四国めたん", UUID: "uuid-metan"},
+	}
+}
+
 func baseInput() props.Input {
 	return props.Input{
 		Script:      baseScript(),
 		Audio:       baseAudio(),
+		Credits:     baseCredits(),
 		GeneratedBy: "scenaremo v0.0.0-test",
 	}
 }
@@ -193,6 +201,41 @@ func TestBuildResolution(t *testing.T) {
 	}
 }
 
+// TestBuildCredits はクレジットがキャラクター単位で集計されることを確かめる。
+func TestBuildCredits(t *testing.T) {
+	in := baseInput()
+	// 同じ話者の別スタイルを足す。規約が求めるのはキャラクター単位の表記なので、
+	// クレジットは増えず、使ったスタイル ID だけが増えるはず。
+	in.Script.Speakers["zundamon_ama"] = script.Speaker{Engine: script.EngineVoicevox, StyleID: 1}
+	in.Credits["zundamon_ama"] = props.SpeakerCredit{Name: "ずんだもん", UUID: "uuid-zundamon"}
+	in.Script.Scenes[1].Lines = append(in.Script.Scenes[1].Lines,
+		script.Line{Speaker: "zundamon_ama", Text: "4つめ"})
+	in.Audio[1] = append(in.Audio[1], props.LineAudio{Path: ".scenaremo/audio/ddd.wav", Duration: time.Second})
+
+	got := build(t, in)
+
+	if len(got.Credits.Entries) != 2 {
+		t.Fatalf("クレジットの件数: got %d, want 2 (%+v)", len(got.Credits.Entries), got.Credits.Entries)
+	}
+
+	// 並びは台本での登場順。ずんだもんが先に喋る。
+	first := got.Credits.Entries[0]
+	if first.Text != "VOICEVOX:ずんだもん" {
+		t.Errorf("Entries[0].Text: got %q, want \"VOICEVOX:ずんだもん\"", first.Text)
+	}
+	if len(first.StyleIDs) != 2 || first.StyleIDs[0] != 1 || first.StyleIDs[1] != 3 {
+		t.Errorf("Entries[0].StyleIDs: got %v, want [1 3]", first.StyleIDs)
+	}
+	if got.Credits.Entries[1].Text != "VOICEVOX:四国めたん" {
+		t.Errorf("Entries[1].Text: got %q, want \"VOICEVOX:四国めたん\"", got.Credits.Entries[1].Text)
+	}
+
+	// クレジットシーンはまだ尺を持たない (issue #17)。
+	if got.Credits.DurationInFrames != 0 {
+		t.Errorf("Credits.DurationInFrames: got %d, want 0", got.Credits.DurationInFrames)
+	}
+}
+
 // TestBuildPassesThroughComponent はシーンコンポーネントの指定と props が
 // 検証されずそのまま透過することを確かめる（→ issue #34）。
 func TestBuildPassesThroughComponent(t *testing.T) {
@@ -270,6 +313,12 @@ func TestBuildErrors(t *testing.T) {
 			name:    "音声のパスが空",
 			mutate:  func(in *props.Input) { in.Audio[0][0].Path = "" },
 			wantMsg: "パスが空です",
+		},
+		{
+			// 黙って飛ばすとクレジットが1件足りない props.json ができる。表記漏れは利用者の事故。
+			name:    "クレジット情報が欠けている",
+			mutate:  func(in *props.Input) { delete(in.Credits, "metan") },
+			wantMsg: "クレジット情報がありません",
 		},
 	}
 
