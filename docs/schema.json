@@ -1,0 +1,195 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://raw.githubusercontent.com/takiren/scenaremo/main/docs/schema.json",
+  "title": "scenaremo 台本",
+  "description": "scenaremo の台本スキーマ。scenes（画像1枚）の下に lines（セリフ）がぶら下がる2階層構造。このファイルがスキーマの唯一の正であり、Go の struct と renderer 側の zod は両方これに従う。",
+  "type": "object",
+  "required": ["meta", "speakers", "scenes"],
+  "additionalProperties": false,
+  "properties": {
+    "$schema": {
+      "type": "string",
+      "description": "JSON で台本を書く場合のスキーマ参照。YAML では代わりに先頭へ `# yaml-language-server: $schema=...` コメントを書く。"
+    },
+    "meta": {
+      "$ref": "#/$defs/meta"
+    },
+    "speakers": {
+      "$ref": "#/$defs/speakers"
+    },
+    "defaults": {
+      "$ref": "#/$defs/defaults"
+    },
+    "scenes": {
+      "type": "array",
+      "description": "シーンの並び。動画はこの順に再生される。",
+      "minItems": 1,
+      "items": {
+        "$ref": "#/$defs/scene"
+      }
+    }
+  },
+  "$defs": {
+    "meta": {
+      "type": "object",
+      "title": "メタ情報",
+      "description": "動画全体の設定。尺は音声の実測長で決まるため、ここには書かない。",
+      "required": ["title"],
+      "additionalProperties": false,
+      "properties": {
+        "title": {
+          "type": "string",
+          "description": "動画のタイトル。",
+          "minLength": 1
+        },
+        "aspect": {
+          "description": "アスペクト比。16:9 は横型、9:16 は縦型（ショート動画向け）。",
+          "enum": ["16:9", "9:16"],
+          "default": "16:9"
+        },
+        "fps": {
+          "type": "integer",
+          "description": "フレームレート。",
+          "minimum": 1,
+          "maximum": 240,
+          "default": 30
+        }
+      }
+    },
+    "speakers": {
+      "type": "object",
+      "title": "話者エイリアス定義",
+      "description": "台本の中で使う話者名（エイリアス）から、実際の音声エンジンとスタイルへの対応表。声を差し替えたくなったらここだけ直す。",
+      "minProperties": 1,
+      "propertyNames": {
+        "minLength": 1
+      },
+      "additionalProperties": {
+        "$ref": "#/$defs/speaker"
+      }
+    },
+    "speaker": {
+      "type": "object",
+      "title": "話者",
+      "required": ["styleId"],
+      "additionalProperties": false,
+      "properties": {
+        "engine": {
+          "description": "音声合成エンジン。",
+          "enum": ["voicevox"],
+          "default": "voicevox"
+        },
+        "styleId": {
+          "type": "integer",
+          "description": "エンジンのスタイル ID。`scenaremo speakers` で一覧を確認できる。",
+          "minimum": 0
+        },
+        "speedScale": {
+          "type": "number",
+          "description": "話速。1.0 が既定。",
+          "minimum": 0.5,
+          "maximum": 2
+        },
+        "pitchScale": {
+          "type": "number",
+          "description": "音高。0 が既定。範囲を外れると音声が破綻する。",
+          "minimum": -0.15,
+          "maximum": 0.15
+        },
+        "intonationScale": {
+          "type": "number",
+          "description": "抑揚。1.0 が既定。",
+          "minimum": 0,
+          "maximum": 2
+        },
+        "volumeScale": {
+          "type": "number",
+          "description": "音量。1.0 が既定。",
+          "minimum": 0,
+          "maximum": 2
+        }
+      }
+    },
+    "defaults": {
+      "type": "object",
+      "title": "既定値",
+      "description": "各シーン・各セリフで省略されたときに使われる値。",
+      "additionalProperties": false,
+      "properties": {
+        "speaker": {
+          "type": "string",
+          "description": "`lines[].speaker` を省略したときに使う話者エイリアス。speakers に定義された名前であること。",
+          "minLength": 1
+        },
+        "transition": {
+          "description": "`scenes[].transition` を省略したときに使うトランジション。",
+          "enum": ["fade", "none"],
+          "default": "fade"
+        },
+        "gapMs": {
+          "type": "integer",
+          "description": "セリフ間に入れる余白（ミリ秒）。",
+          "minimum": 0,
+          "default": 300
+        }
+      }
+    },
+    "scene": {
+      "type": "object",
+      "title": "シーン",
+      "description": "画像1枚と、その間に喋るセリフの集まり。",
+      "required": ["image", "lines"],
+      "additionalProperties": false,
+      "properties": {
+        "image": {
+          "type": "string",
+          "description": "表示する画像のパス。台本ファイルからの相対パス。",
+          "minLength": 1
+        },
+        "transition": {
+          "description": "前のシーンからの繋ぎ方。省略時は defaults.transition。",
+          "enum": ["fade", "none"],
+          "default": "fade"
+        },
+        "component": {
+          "type": "string",
+          "description": "このシーンの描画に使う React コンポーネント名。renderer/src/scenes/registry.ts に登録された名前を指定する。省略時は default。",
+          "minLength": 1,
+          "pattern": "^[A-Za-z][A-Za-z0-9_-]*$",
+          "default": "default"
+        },
+        "props": {
+          "type": "object",
+          "description": "component に渡す任意のプロパティ。中身はコンポーネント側の責務のため、スキーマでは検証しない。",
+          "additionalProperties": true
+        },
+        "lines": {
+          "type": "array",
+          "description": "このシーンで喋るセリフの並び。",
+          "minItems": 1,
+          "items": {
+            "$ref": "#/$defs/line"
+          }
+        }
+      }
+    },
+    "line": {
+      "type": "object",
+      "title": "セリフ",
+      "required": ["text"],
+      "additionalProperties": false,
+      "properties": {
+        "speaker": {
+          "type": "string",
+          "description": "話者エイリアス。省略時は defaults.speaker。",
+          "minLength": 1
+        },
+        "text": {
+          "type": "string",
+          "description": "読み上げる文章。改行を含められる。",
+          "minLength": 1
+        }
+      }
+    }
+  }
+}

@@ -1,0 +1,36 @@
+# yaml-language-server: $schema=../../docs/schema.json
+
+meta:
+  title: "Remotionで解説動画を作る"
+  aspect: "16:9"        # 16:9 | 9:16
+  fps: 30
+
+# 話者のエイリアス定義。声を差し替えたくなったらここだけ直す
+speakers:
+  zundamon:
+    engine: voicevox
+    styleId: 3
+  metan:
+    engine: voicevox
+    styleId: 2
+    speedScale: 1.05
+
+defaults:
+  speaker: zundamon
+  transition: fade
+  gapMs: 300            # セリフ間の余白
+
+scenes:
+  - image: assets/01-title.png
+    transition: fade
+    lines:
+      - text: 今日はRemotionの話をするのだ
+      - speaker: metan
+        text: |
+          スライドショー形式の
+          解説動画を作りますね
+
+  - image: assets/02-overview.png
+    lines:
+      - text: まず台本を書くのだ
+      - text: あとはCLIが音声を作ってくれるのだ
