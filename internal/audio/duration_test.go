@@ -360,7 +360,9 @@ func writeWAV(t *testing.T, sampleRate, bitDepth, numChans, frames int) string {
 	if err != nil {
 		t.Fatalf("テスト用 wav を作れない: %v", err)
 	}
-	defer f.Close()
+	defer func() {
+		_ = f.Close()
+	}()
 
 	e := wav.NewEncoder(f, sampleRate, bitDepth, numChans, 1)
 	buf := &goaudio.IntBuffer{
@@ -422,7 +424,7 @@ func fmtChunk(sampleRate, bitDepth, numChans int) []byte {
 func dataChunkHeader(size int) []byte {
 	var b bytes.Buffer
 	b.WriteString("data")
-	binary.Write(&b, binary.LittleEndian, uint32(size))
+	writeBinPanic(&b, uint32(size))
 	return b.Bytes()
 }
 
