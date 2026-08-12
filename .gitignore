@@ -141,3 +141,16 @@ dist
 vite.config.js.timestamp-*
 vite.config.ts.timestamp-*
 .vite/
+
+# --- scenaremo ---
+# CLI が生成する中間成果物（手で編集しない）
+.scenaremo/
+# レンダリング出力
+out/
+# Go のビルド成果物
+/scenaremo
+
+# --- ローカルのエージェント設定（リポジトリでは共有しない） ---
+.agents/
+.claude/
+skills-lock.json
