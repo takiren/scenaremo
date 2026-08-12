@@ -8,7 +8,7 @@ on:
 jobs:
   lint-and-vuln:
     name: Lint and Vulnerability Check
-    runs-on: ubuntu-slum
+    runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v6
 
@@ -48,7 +48,10 @@ jobs:
 
   build-and-test:
     name: Build and Test
-    runs-on: [ubuntu-latest, linux-24.04-arm, macos-latest]
+    runs-on: ${{ matrix.os }}
+    strategy:
+      matrix:
+        os: [ubuntu-latest, linux-24.04-arm, macos-latest]
     steps:
       - uses: actions/checkout@v7
 
