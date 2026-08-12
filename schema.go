@@ -15,3 +15,13 @@ import _ "embed"
 //
 //go:embed docs/schema.json
 var SchemaJSON []byte
+
+// PropsSchemaJSON は props.json の JSON Schema。
+//
+// props.json は CLI が生成して Remotion が読むだけなので、台本と違って実行時に検証する相手はいない。
+// それでもスキーマを置くのは、これが CLI と renderer の契約書そのものだからで、
+// Go の型 (internal/props) と renderer 側の zod はどちらもこの定義に従う。
+// CLI 側は自分の出力がこの契約を満たすことをテストで確かめる（→ internal/props の schema_test.go）。
+//
+//go:embed docs/props.schema.json
+var PropsSchemaJSON []byte

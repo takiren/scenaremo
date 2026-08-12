@@ -1,0 +1,227 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://raw.githubusercontent.com/takiren/scenaremo/main/docs/props.schema.json",
+  "title": "scenaremo props",
+  "description": "props.json のスキーマ。props.json は CLI と Remotion の間の唯一のインターフェースであり、この形が固定されている限り両者を独立に開発できる。CLI が生成する中間生成物なので人間は書かない（手で編集しても次の build で消える）。フレーム数はすべて CLI が確定させた値であり、renderer 側で秒に戻して計算し直してはならない（丸めが変わって音がずれる）。\n\n座標系: 動画の先頭からの絶対位置はどこにも現れない。シーンは尺を、セリフはシーンの先頭からの相対位置を持つ。renderer は @remotion/transitions の TransitionSeries でシーンを並べる想定で、TransitionSeries は子シーケンスを前へ詰めて配置するため絶対位置を渡しても意味を成さない。相対に振り切ることで、どの値もそれが置かれる Sequence の中でそのまま使える。\n\nこのファイルがスキーマの唯一の正であり、Go の型 (internal/props) と renderer 側の zod は両方これに従う。",
+  "type": "object",
+  "required": ["version", "meta", "scenes", "credits"],
+  "additionalProperties": false,
+  "properties": {
+    "version": {
+      "type": "integer",
+      "description": "props.json の契約の版。renderer が読めない版を受け取ったときに、意味不明な描画結果ではなく明確なエラーを出せるようにするためのもの。互換性を壊す変更をしたときだけ上げる（項目を足すだけなら上げない）。",
+      "minimum": 1
+    },
+    "$generatedBy": {
+      "type": "string",
+      "description": "生成した scenaremo のバージョン。不具合の報告を受けたときに、どの版が吐いた props.json なのかを特定するために使う。"
+    },
+    "$note": {
+      "type": "string",
+      "description": "人間向けの注意書き。JSON にはコメントが書けないため、「手で編集しない」という契約をファイル自身に持たせる場所として用意している。機械はこの値を読まない。"
+    },
+    "meta": {
+      "$ref": "#/$defs/meta"
+    },
+    "scenes": {
+      "type": "array",
+      "description": "シーンの並び。動画はこの順に再生される。台本の scenes と 1 対 1 で対応する。",
+      "minItems": 1,
+      "items": {
+        "$ref": "#/$defs/scene"
+      }
+    },
+    "credits": {
+      "$ref": "#/$defs/credits"
+    }
+  },
+  "$defs": {
+    "meta": {
+      "type": "object",
+      "title": "メタ情報",
+      "description": "動画全体の設定。renderer の calculateMetadata はここから解像度と尺を決める。",
+      "required": ["title", "aspect", "width", "height", "fps", "durationInFrames"],
+      "additionalProperties": false,
+      "properties": {
+        "title": {
+          "type": "string",
+          "description": "動画のタイトル。台本の meta.title をそのまま渡す。",
+          "minLength": 1
+        },
+        "aspect": {
+          "description": "アスペクト比。解像度は width / height で確定しているので描画には要らないが、どの指定から解決された値なのかが分かるように残している。",
+          "enum": ["16:9", "9:16"]
+        },
+        "width": {
+          "type": "integer",
+          "description": "解像度の幅 (px)。台本の aspect から CLI が解決する。renderer 側に解像度の対応表を持たせないため、ここでは必ず具体的な数値になっている。",
+          "minimum": 1
+        },
+        "height": {
+          "type": "integer",
+          "description": "解像度の高さ (px)。",
+          "minimum": 1
+        },
+        "fps": {
+          "type": "integer",
+          "description": "フレームレート。props.json 中のすべてのフレーム数はこの fps を前提に計算されている。",
+          "minimum": 1,
+          "maximum": 240
+        },
+        "durationInFrames": {
+          "type": "integer",
+          "description": "動画全体の総フレーム数。credits の分も含んだ最終的な尺で、calculateMetadata はこの値をそのまま採用する。台本にフレーム数を書かせないための要。TransitionSeries の尺の式（各シーケンスの尺の合計 − トランジションの尺の合計）と一致する。",
+          "minimum": 1
+        }
+      }
+    },
+    "scene": {
+      "type": "object",
+      "title": "シーン",
+      "description": "画像 1 枚と、その間に喋るセリフの集まり。",
+      "required": ["image", "component", "durationInFrames", "transition", "lines"],
+      "additionalProperties": false,
+      "properties": {
+        "image": {
+          "type": "string",
+          "description": "表示する画像のパス。動画ディレクトリ (videos/<id>/) からの相対パスで、区切りは OS に依らず / 。renderer は --public-dir に動画ディレクトリを指定して staticFile() に渡す。絶対パスを書かないのは、CI・eject・別マシンで壊れるため。",
+          "minLength": 1
+        },
+        "component": {
+          "type": "string",
+          "description": "このシーンの描画に使う React コンポーネント名。renderer 側 registry のキーで、既定は default。未知の名前を受け取ったら、使える名前を並べたエラーにすること。",
+          "minLength": 1
+        },
+        "props": {
+          "type": "object",
+          "description": "component に渡す任意のプロパティ。台本に書かれた内容を CLI が検証せずそのまま透過させたもので、中身の責務はコンポーネント側にある。",
+          "additionalProperties": true
+        },
+        "durationInFrames": {
+          "type": "integer",
+          "description": "TransitionSeries.Sequence へ渡す尺。喋りの尺そのものではなく、そこへ transition.durationInFrames を足した値になる。TransitionSeries は隣り合うシーケンスを繋ぎのぶん重ねて詰めるため、重なる分をあらかじめ申告しておかないとシーンが繋ぎのぶんだけ前へずれてしまう。",
+          "minimum": 1
+        },
+        "transition": {
+          "$ref": "#/$defs/transition"
+        },
+        "lines": {
+          "type": "array",
+          "description": "このシーンで喋るセリフの並び。",
+          "minItems": 1,
+          "items": {
+            "$ref": "#/$defs/line"
+          }
+        }
+      }
+    },
+    "transition": {
+      "type": "object",
+      "title": "トランジション",
+      "description": "前のシーンからこのシーンへの繋ぎ。TransitionSeries.Transition に対応する。\n\n繋ぎはシーンの先頭 durationInFrames フレームで行われ、ちょうど終わったところで最初のセリフが鳴り始める（lines[0].startFrame と一致する）。次の声が鳴り始めた時点で新しい画像が出揃っている状態を作るための置き方で、逆にすると新しい声が喋っている間まだ前の画像が透けていて、同期ずれとして見える。",
+      "required": ["type", "durationInFrames"],
+      "additionalProperties": false,
+      "properties": {
+        "type": {
+          "description": "繋ぎ方。none は繋ぎの演出を入れない。",
+          "enum": ["fade", "none"]
+        },
+        "durationInFrames": {
+          "type": "integer",
+          "description": "繋ぎに掛けるフレーム数。0 は繋ぎ無しを表し、先頭のシーンは繋ぐ相手がいないので必ず 0 になる。\n\nrenderer はこの値をそのまま使う timing を選ぶこと（linearTiming({durationInFrames}) など）。springTiming のように設定から尺が決まるものを使うと、CLI の申告と食い違って音がずれる。\n\nTransitionSeries の制約により繋ぎは前後どちらのシーケンスよりも長くできないため、指定が長すぎる場合は CLI が前のシーンの尺で頭打ちにしている。",
+          "minimum": 0
+        }
+      }
+    },
+    "line": {
+      "type": "object",
+      "title": "セリフ",
+      "required": ["speaker", "text", "audio", "startFrame", "durationInFrames"],
+      "additionalProperties": false,
+      "properties": {
+        "speaker": {
+          "type": "string",
+          "description": "話者エイリアス。台本で省略されていた場合は defaults.speaker が解決済みで入っている。字幕の話者名表示に使える。",
+          "minLength": 1
+        },
+        "text": {
+          "type": "string",
+          "description": "読み上げた文章。台本に書かれたまま（改行も保持する）で、字幕はこれを使う。",
+          "minLength": 1
+        },
+        "audio": {
+          "type": "string",
+          "description": "合成された wav のパス。image と同じく動画ディレクトリからの相対パスで、区切りは / 。ファイル名は合成パラメータのハッシュなので、同じ話者が同じテキストを喋る行は同じファイルを指す。",
+          "minLength": 1
+        },
+        "startFrame": {
+          "type": "integer",
+          "description": "このセリフの音声が鳴り始めるフレーム。シーンの先頭からの相対位置であり、動画の先頭からではない。シーンの Sequence の中にそのまま置ける値になっている。シーンの最初のセリフは transition.durationInFrames と一致する（繋ぎが終わった瞬間に鳴り始める）。",
+          "minimum": 0
+        },
+        "durationInFrames": {
+          "type": "integer",
+          "description": "このセリフに与えられたフレーム数。音声の実測長を切り上げた値なので、必ず音声の長さ以上になる（切り捨てると Sequence が音の末尾を切ってしまう）。",
+          "minimum": 1
+        }
+      }
+    },
+    "credits": {
+      "type": "object",
+      "title": "クレジット",
+      "description": "使用した音声ライブラリのクレジット表記。VOICEVOX は音声ライブラリごとにクレジット表記が必要で、表記漏れは利用者の事故に直結するため、台本から機械的に集計する。",
+      "required": ["durationInFrames", "entries"],
+      "additionalProperties": false,
+      "properties": {
+        "durationInFrames": {
+          "type": "integer",
+          "description": "クレジットシーンの尺。0 はクレジットシーンを表示しないことを表す（entries は 0 でも入っているので、renderer が独自に表示することはできる）。meta.durationInFrames はこの分を含んでいる。置く位置は最後のシーンの直後と決まっているので、開始位置は持たない。",
+          "minimum": 0
+        },
+        "entries": {
+          "type": "array",
+          "description": "クレジット表記の並び。台本での登場順で、重複は取り除いてある。",
+          "items": {
+            "$ref": "#/$defs/creditEntry"
+          }
+        }
+      }
+    },
+    "creditEntry": {
+      "type": "object",
+      "title": "クレジット 1 件",
+      "description": "音声ライブラリ 1 つ分のクレジット。規約が求めるのはキャラクター単位の表記なので、同じ話者の別スタイルを使っていても 1 件にまとまる。",
+      "required": ["engine", "speakerName", "styleIds", "text"],
+      "additionalProperties": false,
+      "properties": {
+        "engine": {
+          "type": "string",
+          "description": "音声合成エンジン。台本の speakers[].engine と同じ値。",
+          "minLength": 1
+        },
+        "speakerName": {
+          "type": "string",
+          "description": "話者（キャラクター）の名前。エンジンの /speakers から取得した表示名で、台本の話者エイリアスではない。",
+          "minLength": 1
+        },
+        "speakerUuid": {
+          "type": "string",
+          "description": "エンジンが返す話者の UUID。同名の別話者を取り違えないための識別子で、重複の判定にも使う。"
+        },
+        "styleIds": {
+          "type": "array",
+          "description": "この話者について実際に使われたスタイル ID。表記には要らないが、意図した声が使われたかを確かめるために残している。",
+          "items": {
+            "type": "integer",
+            "minimum": 0
+          }
+        },
+        "text": {
+          "type": "string",
+          "description": "そのまま表示できるクレジット表記（例: VOICEVOX:ずんだもん）。クレジットシーンはこの文字列を並べる。",
+          "minLength": 1
+        }
+      }
+    }
+  }
+}
