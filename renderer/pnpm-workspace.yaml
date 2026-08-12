@@ -1,0 +1,7 @@
+# pnpm 10 以降はパッケージのビルドスクリプトを既定でブロックする。
+# esbuild (Remotion のバンドラが使う) を許可しておかないと、install のたびに
+# ERR_PNPM_IGNORED_BUILDS の警告が出る。
+#
+# pnpm 11 で設定の置き場が package.json の "pnpm" フィールドからこのファイルへ移った。
+allowBuilds:
+  esbuild: true
