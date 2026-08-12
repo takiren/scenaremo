@@ -1,0 +1,88 @@
+{
+  "version": 1,
+  "$generatedBy": "scenaremo (example)",
+  "$note": "このファイルは scenaremo が生成します。手で編集しないでください（変更は script.yaml か renderer/src/*.tsx で行います）。",
+  "meta": {
+    "title": "Remotionで解説動画を作る",
+    "aspect": "16:9",
+    "width": 1920,
+    "height": 1080,
+    "fps": 30,
+    "durationInFrames": 324
+  },
+  "scenes": [
+    {
+      "image": "assets/01-title.png",
+      "component": "default",
+      "durationInFrames": 175,
+      "transition": {
+        "type": "fade",
+        "durationInFrames": 0
+      },
+      "lines": [
+        {
+          "speaker": "zundamon",
+          "text": "今日はRemotionの話をするのだ",
+          "audio": ".scenaremo/audio/99f8961035658d8c74f292bf798d1432bd6dde477ccea933cda390e6f194b691.wav",
+          "startFrame": 0,
+          "durationInFrames": 72
+        },
+        {
+          "speaker": "metan",
+          "text": "スライドショー形式の\n解説動画を作りますね\n",
+          "audio": ".scenaremo/audio/2d97282e998df70665ea5a91f9cf3e69f7718b2472aebe869a9c3bd808b3232d.wav",
+          "startFrame": 81,
+          "durationInFrames": 94
+        }
+      ]
+    },
+    {
+      "image": "assets/02-overview.png",
+      "component": "default",
+      "durationInFrames": 161,
+      "transition": {
+        "type": "fade",
+        "durationInFrames": 12
+      },
+      "lines": [
+        {
+          "speaker": "zundamon",
+          "text": "まず台本を書くのだ",
+          "audio": ".scenaremo/audio/020bd453b9d62988685be72cd79b3be3dedc5668afab2f8df0aabb7e9f70c7ea.wav",
+          "startFrame": 12,
+          "durationInFrames": 57
+        },
+        {
+          "speaker": "zundamon",
+          "text": "あとはCLIが音声を作ってくれるのだ",
+          "audio": ".scenaremo/audio/c61122edd170cf9a1bdacaa620467c0f3acfcf560ea5aac34b60c2d9e05325d3.wav",
+          "startFrame": 78,
+          "durationInFrames": 83
+        }
+      ]
+    }
+  ],
+  "credits": {
+    "durationInFrames": 0,
+    "entries": [
+      {
+        "engine": "voicevox",
+        "speakerName": "ずんだもん",
+        "speakerUuid": "388f246b-8c41-4ac1-8e2d-5d79f3ff56d9",
+        "styleIds": [
+          3
+        ],
+        "text": "VOICEVOX:ずんだもん"
+      },
+      {
+        "engine": "voicevox",
+        "speakerName": "四国めたん",
+        "speakerUuid": "7ffcb7ce-00ec-4bdc-82cd-45a8889e43ff",
+        "styleIds": [
+          2
+        ],
+        "text": "VOICEVOX:四国めたん"
+      }
+    ]
+  }
+}
