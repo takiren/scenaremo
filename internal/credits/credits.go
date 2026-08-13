@@ -158,7 +158,7 @@ func speakersOf(ctx context.Context, r ListerResolver, kind tts.EngineKind, list
 // creditOf は話者一覧から styleID に当たる話者を探し、クレジット情報へ直す。
 //
 // スタイルではなく話者（キャラクター）を返すのは、規約が求めるクレジットが音声ライブラリ単位だから。
-// 同じ話者のノーマルとあまあまを使い分けても、書くべきクレジットは 1 つになる（→ props.buildCredits）。
+// 同じ話者のノーマルとあまあまを使い分けても、書くべきクレジットは 1 つになる（→ props.BuildCredits）。
 func creditOf(speakers []tts.Speaker, kind tts.EngineKind, alias string, styleID int) (props.SpeakerCredit, error) {
 	for _, sp := range speakers {
 		for _, style := range sp.Styles {
