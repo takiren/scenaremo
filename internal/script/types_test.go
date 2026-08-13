@@ -214,8 +214,8 @@ type goField struct {
 func goFields(t *testing.T, typ reflect.Type) map[string]goField {
 	t.Helper()
 	out := make(map[string]goField, typ.NumField())
-	for i := range typ.NumField() {
-		f := typ.Field(i)
+	for f := range typ.Fields() {
+		f := f
 		yamlTag := f.Tag.Get("yaml")
 		jsonTag := f.Tag.Get("json")
 		if yamlTag != jsonTag {
@@ -242,12 +242,12 @@ func TestGoTypesMatchSchema(t *testing.T) {
 		typ  reflect.Type
 		node map[string]any
 	}{
-		{"Script", reflect.TypeOf(script.Script{}), doc},
-		{"Meta", reflect.TypeOf(script.Meta{}), objAt(t, doc, "$defs", "meta")},
-		{"Speaker", reflect.TypeOf(script.Speaker{}), objAt(t, doc, "$defs", "speaker")},
-		{"Defaults", reflect.TypeOf(script.Defaults{}), objAt(t, doc, "$defs", "defaults")},
-		{"Scene", reflect.TypeOf(script.Scene{}), objAt(t, doc, "$defs", "scene")},
-		{"Line", reflect.TypeOf(script.Line{}), objAt(t, doc, "$defs", "line")},
+		{"Script", reflect.TypeFor[script.Script](), doc},
+		{"Meta", reflect.TypeFor[script.Meta](), objAt(t, doc, "$defs", "meta")},
+		{"Speaker", reflect.TypeFor[script.Speaker](), objAt(t, doc, "$defs", "speaker")},
+		{"Defaults", reflect.TypeFor[script.Defaults](), objAt(t, doc, "$defs", "defaults")},
+		{"Scene", reflect.TypeFor[script.Scene](), objAt(t, doc, "$defs", "scene")},
+		{"Line", reflect.TypeFor[script.Line](), objAt(t, doc, "$defs", "line")},
 	}
 
 	for _, tt := range tests {

@@ -18,7 +18,7 @@ func TestApplyParams_上書きなしなら原文のまま(t *testing.T) {
 }
 
 func TestApplyParams_未知フィールドを落とさない(t *testing.T) {
-	got, err := applyParams([]byte(sampleAudioQueryJSON), Params{VolumeScale: Float64(0.5)})
+	got, err := applyParams([]byte(sampleAudioQueryJSON), Params{VolumeScale: new(0.5)})
 	if err != nil {
 		t.Fatalf("applyParams が失敗した: %v", err)
 	}
@@ -40,7 +40,7 @@ func TestApplyParams_未知フィールドを落とさない(t *testing.T) {
 }
 
 func TestApplyParams_JSONでなければエラー(t *testing.T) {
-	if _, err := applyParams([]byte("not json"), Params{SpeedScale: Float64(1.2)}); err == nil {
+	if _, err := applyParams([]byte("not json"), Params{SpeedScale: new(1.2)}); err == nil {
 		t.Fatal("不正な JSON なのにエラーにならなかった")
 	}
 }
@@ -49,7 +49,7 @@ func TestParams_IsZero(t *testing.T) {
 	if !(Params{}).IsZero() {
 		t.Error("空の Params が IsZero でない")
 	}
-	if (Params{PitchScale: Float64(0)}).IsZero() {
+	if (Params{PitchScale: new(float64(0))}).IsZero() {
 		t.Error("0 を明示指定した Params が IsZero になった（未指定と区別できていない）")
 	}
 }
@@ -89,7 +89,7 @@ func TestMora_Duration(t *testing.T) {
 		mora Mora
 		want float64
 	}{
-		{"子音あり", Mora{ConsonantLength: Float64(0.05), VowelLength: 0.1}, 0.15},
+		{"子音あり", Mora{ConsonantLength: new(0.05), VowelLength: 0.1}, 0.15},
 		{"子音なし", Mora{VowelLength: 0.07}, 0.07},
 	}
 	for _, tt := range tests {

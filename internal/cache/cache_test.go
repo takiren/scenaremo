@@ -15,10 +15,10 @@ func TestKey_Determinism(t *testing.T) {
 		Text:    "こんにちは",
 		StyleID: 1,
 		Params: tts.Params{
-			SpeedScale:      tts.Float64(1.0),
-			PitchScale:      tts.Float64(0.0),
-			IntonationScale: tts.Float64(1.0),
-			VolumeScale:     tts.Float64(1.0),
+			SpeedScale:      new(1.0),
+			PitchScale:      new(0.0),
+			IntonationScale: new(1.0),
+			VolumeScale:     new(1.0),
 		},
 	}
 	key1 := cache.Key(tts.EngineVoicevox, req)
@@ -33,7 +33,7 @@ func TestKey_Sensitivity(t *testing.T) {
 		Text:    "こんにちは",
 		StyleID: 1,
 		Params: tts.Params{
-			SpeedScale: tts.Float64(1.0),
+			SpeedScale: new(1.0),
 		},
 	}
 	baseKey := cache.Key(tts.EngineVoicevox, base)
@@ -72,7 +72,7 @@ func TestKey_Sensitivity(t *testing.T) {
 				Text:    "こんにちは",
 				StyleID: 1,
 				Params: tts.Params{
-					SpeedScale: tts.Float64(1.1),
+					SpeedScale: new(1.1),
 				},
 			},
 			eng: tts.EngineVoicevox,
@@ -83,7 +83,7 @@ func TestKey_Sensitivity(t *testing.T) {
 				Text:    "こんにちは",
 				StyleID: 1,
 				Params: tts.Params{
-					SpeedScale: tts.Float64(0.0), // base は 1.0 だが、別のテストとして nil と 0 を比べる
+					SpeedScale: new(0.0), // base は 1.0 だが、別のテストとして nil と 0 を比べる
 				},
 			},
 			eng: tts.EngineVoicevox,
@@ -112,7 +112,7 @@ func TestKey_NilVsZero(t *testing.T) {
 		Text:    "こんにちは",
 		StyleID: 1,
 		Params: tts.Params{
-			SpeedScale: tts.Float64(0.0),
+			SpeedScale: new(0.0),
 		},
 	}
 
