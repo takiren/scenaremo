@@ -157,3 +157,6 @@ out/
 .agents/
 .claude/
 skills-lock.json
+
+# --- mac固有の設定。謎のディレクトリを無視 ---
+.DS_Store
