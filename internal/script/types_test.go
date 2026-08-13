@@ -126,6 +126,40 @@ scenes:
 	}
 }
 
+// TestUnmarshalCreditsScene は meta.creditsScene が「未指定」と「false の明示」を
+// 区別できることを確かめる（→ issue #17）。
+//
+// 既定が true なので、素の bool で持つとどちらもゼロ値になり、台本から切る手段が無くなる。
+// 既定が false の設定と違って、ここは型の選び方そのものが機能の有無を決めている。
+func TestUnmarshalCreditsScene(t *testing.T) {
+	tests := []struct {
+		name string
+		yaml string
+		want *bool
+	}{
+		{name: "未指定", yaml: `meta: {title: t}`, want: nil},
+		{name: "false の明示", yaml: `meta: {title: t, creditsScene: false}`, want: new(false)},
+		{name: "true の明示", yaml: `meta: {title: t, creditsScene: true}`, want: new(true)},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			var got script.Script
+			if err := yaml.Unmarshal([]byte(tt.yaml), &got); err != nil {
+				t.Fatalf("台本の読み込みに失敗した: %v", err)
+			}
+			switch {
+			case tt.want == nil && got.Meta.CreditsScene != nil:
+				t.Errorf("meta.creditsScene = %v, want nil (未指定)", *got.Meta.CreditsScene)
+			case tt.want != nil && got.Meta.CreditsScene == nil:
+				t.Errorf("meta.creditsScene = nil, want %v の明示", *tt.want)
+			case tt.want != nil && *got.Meta.CreditsScene != *tt.want:
+				t.Errorf("meta.creditsScene = %v, want %v", *got.Meta.CreditsScene, *tt.want)
+			}
+		})
+	}
+}
+
 // TestScriptMarshalsToValidJSON は Go の型から書き出した JSON が
 // スキーマを満たすことを確かめる。yaml/json タグのずれを検出する。
 func TestScriptMarshalsToValidJSON(t *testing.T) {
@@ -344,6 +378,7 @@ func TestGoConstantsMatchSchema(t *testing.T) {
 	}{
 		{"meta.aspect", objAt(t, doc, "$defs", "meta", "properties", "aspect"), string(script.DefaultAspect)},
 		{"meta.fps", objAt(t, doc, "$defs", "meta", "properties", "fps"), float64(script.DefaultFPS)},
+		{"meta.creditsScene", objAt(t, doc, "$defs", "meta", "properties", "creditsScene"), script.DefaultCreditsScene},
 		{"speakers[].engine", objAt(t, doc, "$defs", "speaker", "properties", "engine"), string(script.DefaultEngine)},
 		{"defaults.transition", objAt(t, doc, "$defs", "defaults", "properties", "transition"), string(script.DefaultTransition)},
 		{"defaults.gapMs", objAt(t, doc, "$defs", "defaults", "properties", "gapMs"), float64(script.DefaultGapMs)},
