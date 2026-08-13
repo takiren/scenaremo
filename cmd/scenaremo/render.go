@@ -38,8 +38,10 @@ func newRenderCommand() *cobra.Command {
 		DisableFlagsInUseLine: true,
 		RunE: func(cmd *cobra.Command, args []string) error {
 			var reporter progressReporter = progress.Discard
+			var logWriter io.Writer = io.Discard
 			if !quiet {
 				reporter = progress.New(cmd.ErrOrStderr())
+				logWriter = cmd.ErrOrStderr()
 			}
 
 			var crfPtr *int
@@ -56,8 +58,8 @@ func newRenderCommand() *cobra.Command {
 				NoCache:     noCache,
 				Color:       colorize(cmd.ErrOrStderr()),
 				Reporter:    reporter,
-				Stdout:      cmd.OutOrStdout(),
-				Stderr:      cmd.ErrOrStderr(),
+				Stdout:      logWriter,
+				Stderr:      logWriter,
 			})
 			if err != nil {
 				reporter.End()
