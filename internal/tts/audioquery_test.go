@@ -49,7 +49,7 @@ func TestParams_IsZero(t *testing.T) {
 	if !(Params{}).IsZero() {
 		t.Error("空の Params が IsZero でない")
 	}
-	if (Params{PitchScale: Float64(0)}).IsZero() {
+	if (Params{PitchScale: new(float64(0))}).IsZero() {
 		t.Error("0 を明示指定した Params が IsZero になった（未指定と区別できていない）")
 	}
 }

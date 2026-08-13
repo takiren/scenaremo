@@ -10,9 +10,6 @@ import (
 	"github.com/takiren/scenaremo/internal/script"
 )
 
-//go:fix inline
-func intPtr(v int) *int { return new(v) }
-
 // baseScript は 2 シーン・3 セリフの台本を返す。個々のテストは必要な部分だけ書き換えて使う。
 func baseScript() *script.Script {
 	return &script.Script{
