@@ -203,12 +203,12 @@ func TestSynthesize_パラメータ上書きがsynthesisへ反映される(t *te
 		Text:    "はやくちなのだ",
 		StyleID: 3,
 		Params: Params{
-			SpeedScale:        Float64(1.25),
-			PitchScale:        Float64(0.05),
-			IntonationScale:   Float64(1.4),
-			VolumeScale:       Float64(0.8),
-			PrePhonemeLength:  Float64(0.2),
-			PostPhonemeLength: Float64(0.35),
+			SpeedScale:        new(1.25),
+			PitchScale:        new(0.05),
+			IntonationScale:   new(1.4),
+			VolumeScale:       new(0.8),
+			PrePhonemeLength:  new(0.2),
+			PostPhonemeLength: new(0.35),
 		},
 	})
 	if err != nil {
@@ -266,7 +266,7 @@ func TestSynthesize_一部だけ上書きしても他は既定値のまま(t *te
 	if _, err := c.Synthesize(context.Background(), SynthesizeRequest{
 		Text:    "すこしだけ",
 		StyleID: 2,
-		Params:  Params{SpeedScale: Float64(1.05)},
+		Params:  Params{SpeedScale: new(1.05)},
 	}); err != nil {
 		t.Fatalf("Synthesize が失敗した: %v", err)
 	}
@@ -315,7 +315,7 @@ func TestSynthesize_AccentPhrasesとMorasが呼び出し元へ返る(t *testing.
 	wantMora := Mora{
 		Text:            "コ",
 		Consonant:       &wantConsonant,
-		ConsonantLength: Float64(0.0764),
+		ConsonantLength: new(0.0764),
 		Vowel:           "o",
 		VowelLength:     0.1073,
 		Pitch:           5.4098,

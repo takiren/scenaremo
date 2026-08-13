@@ -11,7 +11,7 @@ import (
 	"errors"
 	"fmt"
 	"net/http"
-	"sort"
+	"slices"
 	"strings"
 )
 
@@ -58,7 +58,7 @@ func KnownKinds() []EngineKind {
 	for k := range engineDefaults {
 		kinds = append(kinds, k)
 	}
-	sort.Slice(kinds, func(i, j int) bool { return kinds[i] < kinds[j] })
+	slices.Sort(kinds)
 	return kinds
 }
 
@@ -140,7 +140,9 @@ type Style struct {
 // Float64 は Params のフィールドへ値を渡すためのヘルパ。
 //
 //	tts.Params{SpeedScale: tts.Float64(1.05)}
-func Float64(v float64) *float64 { return &v }
+//
+//go:fix inline
+func Float64(v float64) *float64 { return new(v) }
 
 // HTTPDoer は http.Client の差し替え口。テストや将来のリトライ層のために interface にしている。
 type HTTPDoer interface {

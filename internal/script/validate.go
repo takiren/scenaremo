@@ -210,7 +210,7 @@ func schemaProperties(raw map[string]any, schemaURL string) []string {
 	}
 
 	node := any(raw)
-	for _, seg := range strings.Split(fragment, "/") {
+	for seg := range strings.SplitSeq(fragment, "/") {
 		if seg == "" {
 			continue
 		}

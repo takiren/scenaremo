@@ -3,6 +3,7 @@ package script_test
 import (
 	"errors"
 	"os"
+	"slices"
 	"strings"
 	"testing"
 
@@ -474,10 +475,8 @@ scenes: [{image: a.png, lines: [{text: こんにちは}]}]
 				t.Fatalf("不正な台本が通ってしまった")
 			}
 			got := failures(t, err)
-			for _, f := range got {
-				if f == tt.want {
-					return
-				}
+			if slices.Contains(got, tt.want) {
+				return
 			}
 			t.Errorf("期待した検証エラー %q が出なかった。実際: %v", tt.want, got)
 		})
