@@ -106,6 +106,9 @@ type Input struct {
 	// 保存まで止めると、出来上がった props.json が指す wav がどこにも無いことになる。
 	NoCache bool
 
+	// Workers は音声合成の並列数。0 または 1 の場合は順次実行される。
+	Workers int
+
 	// Reporter は進捗の通知先。nil なら何も通知しない。
 	Reporter Reporter
 }
