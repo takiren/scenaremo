@@ -94,6 +94,20 @@ func TestBuildMatchesSchema(t *testing.T) {
 				}
 			},
 		},
+		{
+			// 既定の形。baseScript はクレジットシーンを切ってあるので、ここで既定へ戻す（→ issue #17）。
+			name: "クレジットシーンあり",
+			mutate: func(in *props.Input) {
+				in.Script.Meta.CreditsScene = nil
+			},
+		},
+		{
+			// 切った場合も credits.durationInFrames は 0 で、entries は残る形になる。
+			name: "クレジットシーン無効",
+			mutate: func(in *props.Input) {
+				in.Script.Meta.CreditsScene = new(false)
+			},
+		},
 	}
 
 	for _, tt := range tests {

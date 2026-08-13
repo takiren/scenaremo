@@ -156,6 +156,11 @@ type Credits struct {
 	// DurationInFrames はクレジットシーンの尺。0 は表示しないことを表す（→ issue #17）。
 	// 置く位置は最後のシーンの直後と決まっているので、開始位置は持たない。
 	// Entries は 0 でも入っているので、renderer が独自に表示することはできる。
+	//
+	// 0 になるのは台本が meta.creditsScene: false で切っている場合と、載せる表記が 1 件も無い場合。
+	// それ以外では表記の件数から CLI が決める（→ CreditsBaseMs / CreditsPerEntryMs）。
+	// クレジットシーンは繋ぎを持たない。持たせると尺の式に引き算が増え、
+	// Meta.DurationInFrames との関係が足し算のままでなくなるためである。
 	DurationInFrames int `json:"durationInFrames"`
 
 	// Entries はクレジット表記の並び。台本での登場順で、重複は取り除いてある。

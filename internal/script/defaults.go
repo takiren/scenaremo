@@ -16,6 +16,12 @@ func ApplyDefaults(s *Script) {
 	if s.Meta.FPS == 0 {
 		s.Meta.FPS = DefaultFPS
 	}
+	// nil のときだけ埋める。false は「切った」という意思表示なので、
+	// ここで既定へ戻すと二度目の呼び出しでクレジットシーンが復活してしまう（→ issue #17）。
+	if s.Meta.CreditsScene == nil {
+		creditsScene := DefaultCreditsScene
+		s.Meta.CreditsScene = &creditsScene
+	}
 
 	for alias, speaker := range s.Speakers {
 		if speaker.Engine == "" {

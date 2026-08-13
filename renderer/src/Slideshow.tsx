@@ -3,6 +3,7 @@ import {fade} from '@remotion/transitions/fade';
 import {none} from '@remotion/transitions/none';
 import React from 'react';
 import {AbsoluteFill} from 'remotion';
+import {Credits} from './Credits';
 import {Scene} from './Scene';
 import type {Props, Transition as TransitionData} from './schema';
 
@@ -35,8 +36,13 @@ const presentationFor = (type: TransitionData['type']) => (type === 'fade' ? fad
  * 尺と解像度は Root.tsx の calculateMetadata が props.json から決めるので、
  * ここでフレーム数を計算し直してはならない（丸めが変わって音がずれる）。
  * scene.durationInFrames は繋ぎのぶんを含んだ値で届くため、そのまま渡すのが正しい。
+ *
+ * 末尾にはクレジットシーンが付く（→ issue #17）。TransitionSeries の総尺は
+ * 「Σ シーケンスの尺 − Σ 繋ぎの尺」なので、クレジットを繋ぎ無しの Sequence として
+ * 最後に足すと、総尺はちょうど meta.durationInFrames（= Σ シーンの尺 − Σ 繋ぎ + クレジットの尺）に一致する。
+ * ここが 1 フレームでも食い違うと、末尾が composition の尺で切り落とされる。
  */
-export const Slideshow: React.FC<Props> = ({scenes}) => {
+export const Slideshow: React.FC<Props> = ({scenes, credits}) => {
 	return (
 		<AbsoluteFill style={{backgroundColor: 'black'}}>
 			<TransitionSeries>
@@ -70,6 +76,27 @@ export const Slideshow: React.FC<Props> = ({scenes}) => {
 						</TransitionSeries.Sequence>
 					</React.Fragment>
 				))}
+				{/*
+				 * クレジットは最後のシーンの直後に置く。位置は props.json の契約で固定されていて
+				 * （開始位置を持たないのはそのため）、renderer 側に置き場所の判断は無い。
+				 *
+				 * 尺が 0 なら Sequence ごと置かない。0 は「表示しない」を表すので、
+				 * 台本が meta.creditsScene: false で切った場合や表記が 1 件も無い場合はここへ来ない。
+				 * 0 フレームの Sequence を置いても描画されないが、TransitionSeries の子として
+				 * 尺 0 を渡すこと自体が例外になるため、そもそも置かないほうが安全である。
+				 * なお entries は切られていても届く契約なので、entries の有無では判断しない。
+				 *
+				 * 繋ぎを挟まないのは CLI 側の契約と揃えるため。ここへ Transition を足すと
+				 * その分が総尺から引かれ、meta.durationInFrames と食い違って末尾が切れる。
+				 */}
+				{credits.durationInFrames > 0 ? (
+					<TransitionSeries.Sequence
+						durationInFrames={credits.durationInFrames}
+						name="クレジット"
+					>
+						<Credits credits={credits} />
+					</TransitionSeries.Sequence>
+				) : null}
 			</TransitionSeries>
 		</AbsoluteFill>
 	);
