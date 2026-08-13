@@ -215,7 +215,6 @@ func goFields(t *testing.T, typ reflect.Type) map[string]goField {
 	t.Helper()
 	out := make(map[string]goField, typ.NumField())
 	for f := range typ.Fields() {
-		f := f
 		yamlTag := f.Tag.Get("yaml")
 		jsonTag := f.Tag.Get("json")
 		if yamlTag != jsonTag {
