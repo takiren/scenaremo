@@ -1,0 +1,38 @@
+# yaml-language-server: $schema=https://raw.githubusercontent.com/takiren/scenaremo/main/docs/schema.json
+
+meta:
+  title: "はじめての解説動画"
+  aspect: "16:9"        # 16:9 | 9:16
+  fps: 30
+
+# 話者のエイリアス定義。声を差し替えたくなったらここだけ直す
+# styleId は VOICEVOX のスタイル ID (ずんだもん ノーマル = 3 / 四国めたん ノーマル = 2)
+speakers:
+  zundamon:
+    engine: voicevox
+    styleId: 3
+  metan:
+    engine: voicevox
+    styleId: 2
+    speedScale: 1.05
+
+defaults:
+  speaker: zundamon
+  transition: fade
+  gapMs: 300            # 同じシーン内のセリフ間の余白
+  sceneGapMs: 100       # シーンの末尾（＝シーン間と動画末尾）の余白
+
+# 画像は assets/ に置き、この台本からの相対パスで指す。
+# 添えてあるのは差し替える前提のプレースホルダ (中央の四角の数が画像の番号)
+scenes:
+  - image: assets/01-title.png
+    lines:
+      - text: ここに最初のセリフを書くのだ
+      - speaker: metan
+        text: |
+          話者を変えたいときは
+          speaker を書きます
+
+  - image: assets/02-overview.png
+    lines:
+      - text: 画像とセリフを書き換えて、もう一度ビルドすれば動画が変わるのだ
