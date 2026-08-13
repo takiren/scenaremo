@@ -143,7 +143,7 @@ func baseScript() *script.Script {
 	return &script.Script{
 		Meta: script.Meta{Title: "テスト動画", Aspect: script.Aspect16x9, FPS: 30},
 		Speakers: map[string]script.Speaker{
-			"zundamon": {Engine: script.EngineVoicevox, StyleID: 3, SpeedScale: tts.Float64(1.1)},
+			"zundamon": {Engine: script.EngineVoicevox, StyleID: 3, SpeedScale: new(1.1)},
 			"metan":    {Engine: script.EngineVoicevox, StyleID: 2},
 		},
 		Defaults: &script.Defaults{Speaker: "zundamon"},
@@ -434,10 +434,10 @@ func TestRun_話者ごとのパラメータが合成要求に載る(t *testing.T
 	s.Speakers["zundamon"] = script.Speaker{
 		Engine:          script.EngineVoicevox,
 		StyleID:         3,
-		SpeedScale:      tts.Float64(1.2),
-		PitchScale:      tts.Float64(0.05),
-		IntonationScale: tts.Float64(1.3),
-		VolumeScale:     tts.Float64(0.9),
+		SpeedScale:      new(1.2),
+		PitchScale:      new(0.05),
+		IntonationScale: new(1.3),
+		VolumeScale:     new(0.9),
 	}
 	engine := baseEngine()
 
