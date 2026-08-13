@@ -125,6 +125,13 @@ func (p *Printer) Done(synthesized, cached int) {
 	))
 }
 
+// End は書きかけの行があれば閉じる。何も書きかけでなければ何も書かない。
+//
+// 合成は途中で失敗しうる（エンジンが落ちた、Ctrl-C など）。そのとき LineStart で開いた行は
+// LineDone を待たずに終わるので、閉じずにいると失敗の報告が「…セリフ ...」の続きに繋がってしまう。
+// 失敗の報告は利用者が最も注意して読む文なので、そこだけは行頭から始まるようにしておく。
+func (p *Printer) End() { p.endPendingLine() }
+
 // elapsed は Start からの経過時間。Start を呼ばれていなければ 0 を返す。
 // 時計が巻き戻った場合（NTP の補正など）も負の値は返さない。
 func (p *Printer) elapsed() time.Duration {

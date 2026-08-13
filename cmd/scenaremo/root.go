@@ -75,6 +75,7 @@ func newRootCommand() *cobra.Command {
 	root.CompletionOptions.DisableDefaultCmd = true
 	root.SetHelpCommand(newHelpCommand(root))
 
+	root.AddCommand(newBuildCommand())
 	root.AddCommand(newDoctorCommand())
 
 	return root

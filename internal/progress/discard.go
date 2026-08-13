@@ -19,6 +19,7 @@ func (discardPrinter) Start(int)                         {}
 func (discardPrinter) LineStart(int, string, string)     {}
 func (discardPrinter) LineDone(int, bool, time.Duration) {}
 func (discardPrinter) Done(int, int)                     {}
+func (discardPrinter) End()                              {}
 
 // reporter は進捗の受け取り口。呼び出し側（internal/synth）が同じ形のインターフェースを
 // 自分で定義して *Printer や Discard を受け取るため、ここでは公開しない。
@@ -28,6 +29,7 @@ type reporter interface {
 	LineStart(index int, speaker, text string)
 	LineDone(index int, cached bool, d time.Duration)
 	Done(synthesized, cached int)
+	End()
 }
 
 var (

@@ -203,6 +203,26 @@ func TestDiscard_何も書かない(t *testing.T) {
 	progress.Discard.Done(1, 1)
 }
 
+func TestPrinter_Endは書きかけの行を閉じる(t *testing.T) {
+	var buf bytes.Buffer
+	p := progress.New(&buf)
+
+	p.Start(2)
+	p.LineStart(0, "zundamon", "セリフ")
+	p.End()
+
+	if !strings.HasSuffix(buf.String(), "\n") {
+		t.Errorf("書きかけの行が閉じられていない: %q", buf.String())
+	}
+
+	// 書きかけが無いときは何も足さない。失敗しなかった場合に空行が残らないようにするため。
+	before := buf.Len()
+	p.End()
+	if buf.Len() != before {
+		t.Errorf("書きかけが無いのに書き足している: %q", buf.String()[before:])
+	}
+}
+
 func TestPrinter_総数が0件でも壊れない(t *testing.T) {
 	var buf bytes.Buffer
 	p := progress.New(&buf)

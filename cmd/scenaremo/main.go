@@ -14,6 +14,13 @@ import (
 	"os/signal"
 )
 
+// version は scenaremo の版。props.json の $generatedBy に載る。
+//
+// const ではなく var なのは、リリースビルドで
+// go build -ldflags "-X main.version=v0.1.0" と差し替えられるようにするため。
+// 不具合の報告を受けたときに、どの版が吐いた props.json なのかを特定できる状態にしておく。
+var version = "dev"
+
 // 終了コード。診断や検証の失敗を呼び出し元のスクリプトが見分けられるよう、成功以外は必ず 0 以外を返す。
 const (
 	exitSuccess = 0
