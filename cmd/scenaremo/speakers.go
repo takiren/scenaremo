@@ -30,9 +30,9 @@ func newSpeakersCommand() *cobra.Command {
 
 			out := cmd.OutOrStdout()
 			for _, spk := range speakers {
-				fmt.Fprintln(out, spk.Name)
+				_, _ = fmt.Fprintln(out, spk.Name)
 				for _, style := range spk.Styles {
-					fmt.Fprintf(out, "  - %s (%d)\n", style.Name, style.ID)
+					_, _ = fmt.Fprintf(out, "  - %s (%d)\n", style.Name, style.ID)
 				}
 			}
 

@@ -19,7 +19,7 @@ func TestSpeakers_一覧が標準出力に出る(t *testing.T) {
 		}
 		w.Header().Set("Content-Type", "application/json")
 		// モックのレスポンス（tts.SpeakerのJSON配列）
-		w.Write([]byte(`[
+		_, _ = w.Write([]byte(`[
 			{
 				"name": "四国めたん",
 				"speaker_uuid": "...",
