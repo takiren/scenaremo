@@ -80,6 +80,7 @@ func newRootCommand() *cobra.Command {
 	root.AddCommand(newDoctorCommand())
 	root.AddCommand(newInitCommand())
 	root.AddCommand(newRenderCommand())
+	root.AddCommand(newPreviewCommand())
 
 	return root
 }
