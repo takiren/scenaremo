@@ -13,6 +13,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/takiren/scenaremo/internal/project"
 	"github.com/takiren/scenaremo/internal/tts"
 )
 
@@ -159,7 +160,7 @@ func checkRendererDeps(opts Options) Check {
 
 	dir := opts.RendererDir
 	if dir == "" {
-		found, ok := findRendererDir(opts.WorkDir)
+		found, ok := project.FindRendererDir(opts.WorkDir)
 		if !ok {
 			return Check{
 				Name:   name,
@@ -320,28 +321,6 @@ func writableActions(dir string) []string {
 		fmt.Sprintf("%s に書き込む権限があるか確認してください", displayPath(dir)),
 		"音声と props.json は .scenaremo/ へ、動画は out/ へ書き出されます",
 		"書き込めない場所で作業している場合は、書き込めるディレクトリへ移動して実行してください",
-	}
-}
-
-// findRendererDir は start から親をたどって renderer/ を探す。
-//
-// videos/ep01 のような作業中のディレクトリから doctor を実行しても診断できるようにするため。
-// package.json の有無まで見るのは、たまたま renderer という名前のディレクトリを掴まないようにするため。
-func findRendererDir(start string) (string, bool) {
-	dir, err := filepath.Abs(start)
-	if err != nil {
-		return "", false
-	}
-	for {
-		candidate := filepath.Join(dir, "renderer")
-		if _, err := os.Stat(filepath.Join(candidate, "package.json")); err == nil {
-			return candidate, true
-		}
-		parent := filepath.Dir(dir)
-		if parent == dir {
-			return "", false
-		}
-		dir = parent
 	}
 }
 
