@@ -38,7 +38,7 @@ func newRenderCommand() *cobra.Command {
 		DisableFlagsInUseLine: true,
 		RunE: func(cmd *cobra.Command, args []string) error {
 			var reporter progressReporter = progress.Discard
-			var logWriter io.Writer = io.Discard
+			logWriter := io.Discard
 			if !quiet {
 				reporter = progress.New(cmd.ErrOrStderr())
 				logWriter = cmd.ErrOrStderr()

@@ -125,7 +125,7 @@ func Run(ctx context.Context, opts Options) (*Result, error) {
 	}
 
 	if err := cmdRunner(ctx, cmdName, cmdArgs, rendererDir, opts.Stdout, opts.Stderr); err != nil {
-		return nil, fmt.Errorf("Remotion のレンダリングに失敗しました: %w", err)
+		return nil, fmt.Errorf("remotion のレンダリングに失敗しました: %w", err)
 	}
 
 	return &Result{

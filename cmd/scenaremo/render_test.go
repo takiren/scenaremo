@@ -148,7 +148,7 @@ func TestRender_ディレクトリは1つだけ(t *testing.T) {
 
 func TestRender_失敗すれば終了コードが0以外(t *testing.T) {
 	stubRender(t, func(context.Context, render.Options) (*render.Result, error) {
-		return nil, errors.New("Remotion のレンダリングに失敗しました")
+		return nil, errors.New("remotion のレンダリングに失敗しました")
 	})
 
 	var stdout, stderr bytes.Buffer
@@ -157,7 +157,7 @@ func TestRender_失敗すれば終了コードが0以外(t *testing.T) {
 	if code != exitFailure {
 		t.Errorf("終了コードが違う: %d", code)
 	}
-	if !strings.Contains(stderr.String(), "Remotion のレンダリングに失敗しました") {
+	if !strings.Contains(stderr.String(), "remotion のレンダリングに失敗しました") {
 		t.Errorf("失敗の理由が出ていない: %s", stderr.String())
 	}
 	if stdout.Len() != 0 {
