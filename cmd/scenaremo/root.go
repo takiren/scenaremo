@@ -81,6 +81,7 @@ func newRootCommand() *cobra.Command {
 	root.AddCommand(newInitCommand())
 	root.AddCommand(newRenderCommand())
 	root.AddCommand(newPreviewCommand())
+	root.AddCommand(newSpeakersCommand())
 
 	return root
 }
