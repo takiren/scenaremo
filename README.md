@@ -88,9 +88,19 @@ scenaremo/
 ├── templates/              # go:embed される雛形 (init / eject 用)
 ├── docs/
 │   ├── schema.json         # 台本スキーマの唯一の正
-│   └── props.schema.json   # props.json スキーマの唯一の正
+│   ├── props.schema.json   # props.json スキーマの唯一の正
+│   ├── SCHEMA.md           # スキーマ仕様 & タイムライン計算詳細
+│   ├── custom-components.md# カスタム React コンポーネント開発ガイド
+│   ├── architecture.md     # アーキテクチャ & パイプライン仕様
+│   └── troubleshooting.md  # トラブルシューティング & FAQ
 └── examples/
 ```
+
+> **詳細ドキュメント:**  
+> - 📘 [`docs/SCHEMA.md`](docs/SCHEMA.md): スキーマ詳細仕様・タイムライン計算 & 余白メカニズムの図解
+> - 🎨 [`docs/custom-components.md`](docs/custom-components.md): Remotion 側のカスタムシーンコンポーネント開発手順
+> - 🏗️ [`docs/architecture.md`](docs/architecture.md): CLI パイプライン・所有権層・アセット解決の技術仕様
+> - ❓ [`docs/troubleshooting.md`](docs/troubleshooting.md): トラブルシューティングと FAQ
 
 ---
 
