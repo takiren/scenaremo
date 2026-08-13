@@ -26,6 +26,7 @@ type Options struct {
 	NoCache     bool
 	Color       bool
 	Reporter    synth.Reporter
+	Workers     int
 
 	Stdout io.Writer
 	Stderr io.Writer
@@ -59,6 +60,7 @@ func Run(ctx context.Context, opts Options) (*Result, error) {
 		NoCache:     opts.NoCache,
 		Color:       opts.Color,
 		Reporter:    opts.Reporter,
+		Workers:     opts.Workers,
 	})
 	if err != nil {
 		return nil, err

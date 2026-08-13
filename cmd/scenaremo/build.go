@@ -36,6 +36,7 @@ func newBuildCommand() *cobra.Command {
 		voicevoxURL string
 		noCache     bool
 		quiet       bool
+		parallel    int
 	)
 
 	cmd := &cobra.Command{
@@ -60,6 +61,7 @@ func newBuildCommand() *cobra.Command {
 				Dir:         args[0],
 				VoicevoxURL: voicevoxURL,
 				NoCache:     noCache,
+				Workers:     parallel,
 				// どの版が吐いた props.json なのかを、不具合の報告を受けたときに特定できるようにする。
 				GeneratedBy: "scenaremo " + version,
 				Color:       colorize(cmd.ErrOrStderr()),
@@ -84,6 +86,7 @@ func newBuildCommand() *cobra.Command {
 	cmd.Flags().StringVar(&voicevoxURL, "voicevox-url", tts.DefaultBaseURL(tts.EngineVoicevox), "VOICEVOX ENGINE の URL")
 	cmd.Flags().BoolVar(&noCache, "no-cache", false, "キャッシュを使わず、すべてのセリフを合成し直す")
 	cmd.Flags().BoolVarP(&quiet, "quiet", "q", false, "進捗を表示しない")
+	cmd.Flags().IntVarP(&parallel, "parallel", "p", 1, "音声合成の並列数 (エンジンの負荷とトレードオフ)")
 
 	return cmd
 }

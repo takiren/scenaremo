@@ -9,6 +9,7 @@ import (
 	"path/filepath"
 	"slices"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 
@@ -113,13 +114,23 @@ type fakeEngine struct {
 	// nilResult が true なら (nil, nil) を返す。行儀の悪い実装を差し込まれた状況の再現に使う。
 	nilResult bool
 
+	mu   sync.Mutex
 	reqs []tts.SynthesizeRequest
+
+	onSynthesize func()
 }
 
 func (e *fakeEngine) Kind() tts.EngineKind { return e.kind }
 
 func (e *fakeEngine) Synthesize(_ context.Context, req tts.SynthesizeRequest) (*tts.SynthesizeResult, error) {
+	e.mu.Lock()
 	e.reqs = append(e.reqs, req)
+	e.mu.Unlock()
+
+	if e.onSynthesize != nil {
+		e.onSynthesize()
+	}
+
 	if e.err != nil {
 		return nil, e.err
 	}
@@ -136,7 +147,11 @@ func (e *fakeEngine) Synthesize(_ context.Context, req tts.SynthesizeRequest) (*
 	return &tts.SynthesizeResult{WAV: wavBytes(d)}, nil
 }
 
-func (e *fakeEngine) calls() int { return len(e.reqs) }
+func (e *fakeEngine) calls() int {
+	e.mu.Lock()
+	defer e.mu.Unlock()
+	return len(e.reqs)
+}
 
 // baseScript は 2 シーン・3 セリフの台本を返す。個々のテストは必要な部分だけ書き換えて使う。
 func baseScript() *script.Script {
@@ -802,6 +817,33 @@ func TestRun_Reporterの呼び出し順と引数(t *testing.T) {
 	}
 	if !slices.Equal(reporter.events, want) {
 		t.Errorf("2 周目の進捗の通知が期待と違う:\n got: %v\nwant: %v", reporter.events, want)
+	}
+}
+
+func TestRun_並列に合成される(t *testing.T) {
+	s := baseScript()
+	store := newStore()
+
+	engine := baseEngine()
+	// 3 件のセリフが並列に呼ばれることを確認する。
+	// 各合成リクエストで 50ms 待つ。順次なら 150ms かかるが、並列なら 50ms で終わるはず。
+	engine.onSynthesize = func() {
+		time.Sleep(50 * time.Millisecond)
+	}
+
+	in := baseInput(s, engine, store)
+	in.Workers = 3 // 3 並列
+
+	start := time.Now()
+	got := run(t, in)
+	elapsed := time.Since(start)
+
+	if got.Synthesized != 3 {
+		t.Errorf("Synthesized = %d, 期待値 3", got.Synthesized)
+	}
+	
+	if elapsed >= 100*time.Millisecond {
+		t.Errorf("合成に時間がかかりすぎている（並列化されていない）: %v", elapsed)
 	}
 }
 
