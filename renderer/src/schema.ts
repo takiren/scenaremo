@@ -70,7 +70,13 @@ export const creditEntrySchema = z.object({
 });
 
 export const creditsSchema = z.object({
-	/** クレジットシーンの尺。0 は表示しないことを表す（クレジットシーン本体は issue #17）。 */
+	/**
+	 * クレジットシーンの尺。0 は表示しないことを表す（台本の `meta.creditsScene: false`、
+	 * または載せる表記が 1 件も無い場合）。置く位置は最後のシーンの直後で固定なので開始位置は持たない。
+	 *
+	 * 0 でも entries は入っている。「表示しない」のは既定のクレジットシーンだけであって、
+	 * renderer が独自に表示する道は塞がない。
+	 */
 	durationInFrames: z.number().int().min(0),
 	entries: z.array(creditEntrySchema),
 });

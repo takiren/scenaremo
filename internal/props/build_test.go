@@ -11,9 +11,18 @@ import (
 )
 
 // baseScript は 2 シーン・3 セリフの台本を返す。個々のテストは必要な部分だけ書き換えて使う。
+//
+// クレジットシーンは切ってある。タイムラインを見張るテストが期待する数値へクレジットの尺が
+// 混ざると、尺の話とクレジットの話のどちらが壊れたのか分からなくなるためで、
+// 既定で入ること自体は TestBuildCreditsScene と TestBuildFillsDefaults が確かめる。
 func baseScript() *script.Script {
 	return &script.Script{
-		Meta: script.Meta{Title: "テスト動画", Aspect: script.Aspect16x9, FPS: 30},
+		Meta: script.Meta{
+			Title:        "テスト動画",
+			Aspect:       script.Aspect16x9,
+			FPS:          30,
+			CreditsScene: new(false),
+		},
 		Speakers: map[string]script.Speaker{
 			"zundamon": {Engine: script.EngineVoicevox, StyleID: 3},
 			"metan":    {Engine: script.EngineVoicevox, StyleID: 2},
@@ -311,9 +320,102 @@ func TestBuildCredits(t *testing.T) {
 		t.Errorf("Entries[1].Text: got %q, want \"VOICEVOX:四国めたん\"", got.Credits.Entries[1].Text)
 	}
 
-	// クレジットシーンはまだ尺を持たない (issue #17)。
+	// クレジットシーンを切っていても集計は止まらない。「表示しない」のはシーンだけであって、
+	// entries は renderer が独自に表示できるように入り続ける契約になっている（→ issue #17）。
 	if got.Credits.DurationInFrames != 0 {
 		t.Errorf("Credits.DurationInFrames: got %d, want 0", got.Credits.DurationInFrames)
+	}
+}
+
+// TestBuildCreditsScene はクレジットシーンが既定で末尾に入り、台本から切れることを確かめる（→ issue #17）。
+//
+// 尺は「基本 2000ms + 表記 1 件あたり 1000ms」を切り上げてフレームへ直した値。
+// baseScript は話者が 2 人なので 4000ms = 30fps で 120 フレームになる。
+func TestBuildCreditsScene(t *testing.T) {
+	tests := []struct {
+		name    string
+		mutate  func(in *props.Input)
+		credits int // クレジットシーンの尺（フレーム）
+		speech  int // クレジットを除いた喋りの尺。総尺はこれにクレジットの尺を足した値になる
+	}{
+		{
+			// 台本が何も言っていなければ入る。表記漏れは利用者の事故に直結するため。
+			name:    "未指定なら入る",
+			mutate:  func(in *props.Input) { in.Script.Meta.CreditsScene = nil },
+			credits: 120, // (2000 + 1000×2)ms × 30fps
+			speech:  159,
+		},
+		{
+			name:    "true を明示しても入る",
+			mutate:  func(in *props.Input) { in.Script.Meta.CreditsScene = new(true) },
+			credits: 120,
+			speech:  159,
+		},
+		{
+			name:    "false なら入らない",
+			mutate:  func(in *props.Input) { in.Script.Meta.CreditsScene = new(false) },
+			credits: 0,
+			speech:  159,
+		},
+		{
+			// 件数が増えれば読む時間も要るので尺も伸びる。3 人目は別のキャラクターにする
+			// （同じ話者の別スタイルでは 1 件にまとまってしまい、件数が増えない）。
+			name: "表記が増えると尺も伸びる",
+			mutate: func(in *props.Input) {
+				in.Script.Meta.CreditsScene = nil
+				in.Script.Speakers["tsumugi"] = script.Speaker{Engine: script.EngineVoicevox, StyleID: 8}
+				in.Credits["tsumugi"] = props.SpeakerCredit{Name: "春日部つむぎ", UUID: "uuid-tsumugi"}
+				in.Script.Scenes[1].Lines = append(in.Script.Scenes[1].Lines,
+					script.Line{Speaker: "tsumugi", Text: "4つめ"})
+				in.Audio[1] = append(in.Audio[1],
+					props.LineAudio{Path: ".scenaremo/audio/ddd.wav", Duration: time.Second})
+			},
+			credits: 150,          // (2000 + 1000×3)ms × 30fps
+			speech:  159 + 30 + 9, // 4 つめのセリフ 30 フレームとその前の余白 9 フレーム
+		},
+		{
+			// 尺を ms で持ちフレームへは CLI が直すので、fps を変えても体感の長さは変わらない。
+			name: "fps を上げてもクレジットの長さ（秒）は変わらない",
+			mutate: func(in *props.Input) {
+				in.Script.Meta.CreditsScene = nil
+				in.Script.Meta.FPS = 60
+			},
+			credits: 240, // 30fps の 120 フレームと同じ 4 秒
+			speech:  318, // 喋りの尺も 60fps では倍になる
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			in := baseInput()
+			tt.mutate(&in)
+			got := build(t, in)
+
+			if got.Credits.DurationInFrames != tt.credits {
+				t.Errorf("Credits.DurationInFrames: got %d, want %d",
+					got.Credits.DurationInFrames, tt.credits)
+			}
+			if want := tt.speech + tt.credits; got.Meta.DurationInFrames != want {
+				t.Errorf("Meta.DurationInFrames: got %d, want %d", got.Meta.DurationInFrames, want)
+			}
+			// 切っていても集計は残る。renderer が独自に表示できるという契約。
+			if len(got.Credits.Entries) == 0 {
+				t.Errorf("クレジットの集計が消えている: %+v", got.Credits)
+			}
+
+			// TransitionSeries の尺の式。クレジットは繋ぎを持たない Sequence として末尾に足されるので、
+			// Σ シーケンスの尺 − Σ 繋ぎの尺 に自身の尺がそのまま乗る。
+			// ここが meta.durationInFrames と食い違うと、末尾が composition の尺で切り落とされる。
+			sumDuration, sumTransition := got.Credits.DurationInFrames, 0
+			for _, scene := range got.Scenes {
+				sumDuration += scene.DurationInFrames
+				sumTransition += scene.Transition.DurationInFrames
+			}
+			if sumDuration-sumTransition != got.Meta.DurationInFrames {
+				t.Errorf("尺の式が合わない: Σ尺 %d − Σ繋ぎ %d = %d, meta.durationInFrames は %d",
+					sumDuration, sumTransition, sumDuration-sumTransition, got.Meta.DurationInFrames)
+			}
+		})
 	}
 }
 
@@ -448,6 +550,7 @@ func TestBuildFillsDefaults(t *testing.T) {
 	in := baseInput()
 	in.Script.Meta.Aspect = ""
 	in.Script.Meta.FPS = 0
+	in.Script.Meta.CreditsScene = nil
 	in.Script.Defaults = &script.Defaults{Speaker: "zundamon"}
 
 	got := build(t, in)
@@ -462,8 +565,14 @@ func TestBuildFillsDefaults(t *testing.T) {
 	if got.Scenes[0].Lines[0].Speaker != "zundamon" {
 		t.Errorf("Scenes[0].Lines[0].Speaker: got %q, want \"zundamon\"", got.Scenes[0].Lines[0].Speaker)
 	}
+	// クレジットシーンも既定で入る。台本が何も言っていなければ表記が付く側に倒す（→ issue #17）。
+	if got.Credits.DurationInFrames != 120 { // (2000 + 1000×2)ms × 30fps
+		t.Errorf("Credits.DurationInFrames: got %d, want 120 (既定でクレジットシーンが入る)",
+			got.Credits.DurationInFrames)
+	}
 	// gapMs / sceneGapMs も既定値で埋まる。埋め忘れると余白が消えて詰まった動画になる。
-	if got.Meta.DurationInFrames != 135 { // gapMs 300 (9) と sceneGapMs 100 (3) が効いた尺
-		t.Errorf("Meta.DurationInFrames: got %d, want 135 (既定の余白が入った尺)", got.Meta.DurationInFrames)
+	if got.Meta.DurationInFrames != 135+120 { // gapMs 300 (9) と sceneGapMs 100 (3) が効いた尺 + クレジット
+		t.Errorf("Meta.DurationInFrames: got %d, want %d (既定の余白とクレジットが入った尺)",
+			got.Meta.DurationInFrames, 135+120)
 	}
 }

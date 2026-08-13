@@ -53,6 +53,12 @@ const (
 	DefaultSceneGapMs = 100
 	// DefaultComponent は scenes[].component の既定値。renderer 側 registry のキー。
 	DefaultComponent = "default"
+	// DefaultCreditsScene は meta.creditsScene の既定値（→ issue #17）。
+	//
+	// 既定を「入る」側にしているのは、VOICEVOX の規約が求めるクレジット表記の漏れが
+	// 利用者の事故に直結するためである。書き忘れたときに黙って抜けるより、
+	// 要らない人が明示的に切るほうが安全側に倒れる。
+	DefaultCreditsScene = true
 )
 
 // Script は台本1本ぶんの内容を表す。人間が書く唯一の入力。
@@ -86,6 +92,16 @@ type Meta struct {
 
 	// FPS はフレームレート。0（未指定）なら DefaultFPS。
 	FPS int `yaml:"fps,omitempty" json:"fps,omitempty"`
+
+	// CreditsScene はクレジットを動画末尾に自動で表示するかどうか。nil（未指定）なら DefaultCreditsScene。
+	//
+	// 既定が true なので、素の bool で持つと「書いていない」と「false と書いた」がどちらも
+	// ゼロ値になり、台本からクレジットシーンを切れなくなる。Speaker の音声パラメータと同じ理由で
+	// ポインタにしてある（→ issue #17）。
+	//
+	// 切っても集計そのものは止まらない。props.json の credits.entries には入り続けるので、
+	// 表記を別の場所へ自分で置くことはできる。
+	CreditsScene *bool `yaml:"creditsScene,omitempty" json:"creditsScene,omitempty"`
 }
 
 // Speaker は話者エイリアス1件の定義を表す。

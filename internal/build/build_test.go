@@ -227,7 +227,10 @@ func TestRun_台本からpropsjsonとwavまで一気通貫で作る(t *testing.T
 	// 尺は音声の実測長で決まる。
 	// シーン 1 は 1.5 秒 + 余白 0.3 秒 + 0.5 秒 + シーン末尾 0.1 秒 = 45+9+15+3 フレーム、
 	// シーン 2 は 2.25 秒 + シーン末尾 0.1 秒 = 68+3 フレーム（30fps・切り上げ）。
-	if got, want := res.Props.Meta.DurationInFrames, (45+9+15+3)+(68+3); got != want {
+	// これに既定で入るクレジットシーンの尺が乗る（→ issue #17）。長さの決め方は props の側の話なので、
+	// 申告された値をそのまま足して、ここでは喋りの尺の積み上げだけを見張る。
+	if got, want := res.Props.Meta.DurationInFrames,
+		(45+9+15+3)+(68+3)+res.Props.Credits.DurationInFrames; got != want {
 		t.Errorf("総フレーム数が違う: %d (want %d)", got, want)
 	}
 

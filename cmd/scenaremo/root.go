@@ -76,7 +76,11 @@ func newRootCommand() *cobra.Command {
 	root.SetHelpCommand(newHelpCommand(root))
 
 	root.AddCommand(newBuildCommand())
+	root.AddCommand(newCreditsCommand())
 	root.AddCommand(newDoctorCommand())
+	root.AddCommand(newInitCommand())
+	root.AddCommand(newRenderCommand())
+	root.AddCommand(newPreviewCommand())
 
 	return root
 }

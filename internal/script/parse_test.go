@@ -1,6 +1,7 @@
 package script_test
 
 import (
+	"encoding/json"
 	"errors"
 	"os"
 	"path/filepath"
@@ -132,6 +133,10 @@ scenes:
 	if s.Meta.FPS != script.DefaultFPS {
 		t.Errorf("fps = %d", s.Meta.FPS)
 	}
+	// creditsScene を書いていない台本（この issue より前に書かれたもの）にも既定値が入る。
+	if s.Meta.CreditsScene == nil || *s.Meta.CreditsScene != script.DefaultCreditsScene {
+		t.Errorf("meta.creditsScene = %v, want %v", s.Meta.CreditsScene, script.DefaultCreditsScene)
+	}
 	if s.Speakers["zundamon"].Engine != script.DefaultEngine {
 		t.Errorf("engine = %q", s.Speakers["zundamon"].Engine)
 	}
@@ -162,6 +167,7 @@ func TestApplyDefaultsKeepsExplicitValues(t *testing.T) {
   title: t
   aspect: "9:16"
   fps: 60
+  creditsScene: false
 speakers:
   zundamon:
     styleId: 3
@@ -184,6 +190,11 @@ scenes:
 	if s.Meta.Aspect != script.Aspect9x16 || s.Meta.FPS != 60 {
 		t.Errorf("meta = %+v", s.Meta)
 	}
+	// creditsScene: false は「切った」という意思表示。既定が true なので、
+	// ここを埋め直すとクレジットシーンが復活してしまう（→ issue #17）。
+	if s.Meta.CreditsScene == nil || *s.Meta.CreditsScene {
+		t.Errorf("meta.creditsScene = %v, want false の明示", s.Meta.CreditsScene)
+	}
 	if s.Defaults.Transition != script.TransitionNone {
 		t.Errorf("defaults.transition = %q", s.Defaults.Transition)
 	}
@@ -199,6 +210,60 @@ scenes:
 	}
 	if s.Scenes[0].Component != "zoom" {
 		t.Errorf("scenes[0].component = %q", s.Scenes[0].Component)
+	}
+}
+
+// TestApplyDefaultsIsIdempotent は二度呼んでも結果が変わらないことを確かめる。
+//
+// Parse も props.Build も synth も credits も、それぞれ独立に ApplyDefaults を呼ぶ
+// （「省略されているかもしれない」を考えなくてよい状態を各自で作るため）ので、
+// 二度目で値が動く実装は build の途中で台本の意味が変わることを意味する。
+// 特に既定が true のフラグは、埋めたあとに「未指定と同じ」と見なすと明示した false を潰す。
+func TestApplyDefaultsIsIdempotent(t *testing.T) {
+	tests := []struct {
+		name string
+		src  string
+	}{
+		{
+			name: "何も指定していない台本",
+			src: `meta: {title: t}
+speakers: {zundamon: {styleId: 3}}
+scenes: [{image: a.png, lines: [{speaker: zundamon, text: こんにちは}]}]
+`,
+		},
+		{
+			name: "クレジットシーンを切った台本",
+			src: `meta: {title: t, creditsScene: false}
+speakers: {zundamon: {styleId: 3}}
+scenes: [{image: a.png, lines: [{speaker: zundamon, text: こんにちは}]}]
+`,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			// Parse の中で 1 回目が走っている。
+			s, err := script.Parse([]byte(tt.src))
+			if err != nil {
+				t.Fatalf("読めない: %v", err)
+			}
+			// ポインタを持つフィールドがあるので、指す先まで含めて比べる必要がある。
+			// JSON へ落として比べるのは、そのいちばん短い書き方。
+			before, err := json.Marshal(s)
+			if err != nil {
+				t.Fatalf("JSON への書き出しに失敗した: %v", err)
+			}
+
+			script.ApplyDefaults(s)
+
+			after, err := json.Marshal(s)
+			if err != nil {
+				t.Fatalf("JSON への書き出しに失敗した: %v", err)
+			}
+			if string(before) != string(after) {
+				t.Errorf("2 回目の ApplyDefaults で台本が変わった\n  1 回目: %s\n  2 回目: %s", before, after)
+			}
+		})
 	}
 }
 

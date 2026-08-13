@@ -175,7 +175,7 @@
       "properties": {
         "durationInFrames": {
           "type": "integer",
-          "description": "クレジットシーンの尺。0 はクレジットシーンを表示しないことを表す（entries は 0 でも入っているので、renderer が独自に表示することはできる）。meta.durationInFrames はこの分を含んでいる。置く位置は最後のシーンの直後と決まっているので、開始位置は持たない。",
+          "description": "クレジットシーンの尺。0 はクレジットシーンを表示しないことを表す（entries は 0 でも入っているので、renderer が独自に表示することはできる）。meta.durationInFrames はこの分を含んでいる。置く位置は最後のシーンの直後と決まっているので、開始位置は持たない。\n\n0 になるのは台本が meta.creditsScene: false で切っている場合と、載せる表記が 1 件も無い場合。それ以外では表記の件数から CLI が尺を決める（1 件 1 行で並ぶため、読み切るのに要る時間は件数に比例する）。\n\nクレジットシーンには繋ぎが無い。繋ぎを持たせると尺の式（各シーケンスの尺の合計 − トランジションの尺の合計）に引き算が増え、この値と meta.durationInFrames の関係が足し算のままでなくなるためである。",
           "minimum": 0
         },
         "entries": {

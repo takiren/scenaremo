@@ -23,6 +23,25 @@ import (
 // シーン末尾の余白より長いとフェードが前のシーンの語尾に被る（→ issue #44）。
 const DefaultTransitionMs = 400
 
+// CreditsBaseMs はクレジットシーンの尺のうち、表記の件数に依らない部分（ミリ秒）。
+//
+// 画が切り替わったことに気づいてから 1 行目を読み始めるまでの時間にあたる。
+// フレームではなく ms なのは DefaultTransitionMs と同じ理由で、
+// フレームで持つと fps を変えた瞬間に体感の速さが変わってしまうためである。
+const CreditsBaseMs = 2000
+
+// CreditsPerEntryMs はクレジット表記 1 件につき足す時間（ミリ秒）。
+//
+// 尺を「基本 + 件数 × これ」にしたのは、表記が 1 件 1 行で並ぶ以上、
+// 読み切るのに要る時間が件数に比例するからである。固定の尺にすると、話者を 5 人使った台本で
+// 読み終わる前にクレジットが消える。規約を満たすために出しているものが読めないのでは
+// 出す意味が無いので、件数の側に合わせるほうを採った。
+//
+// 上限は設けていない。頭打ちにすると「表記はあるが読めない」という、
+// いちばん避けたい状態を機械的に作り出してしまう。長すぎると感じる場合は
+// 台本で meta.creditsScene: false にして、自分で置く道が残してある。
+const CreditsPerEntryMs = 1000
+
 // resolutions はアスペクト比から解像度への対応表。
 //
 // この表を CLI 側に置くことで、renderer は props.json の width / height を読むだけで済む。
@@ -111,7 +130,7 @@ func Build(in Input) (*Props, error) {
 		return nil, err
 	}
 
-	credits, err := buildCredits(s, in.Credits)
+	credits, err := BuildCredits(s, in.Credits)
 	if err != nil {
 		return nil, err
 	}
@@ -126,8 +145,10 @@ func Build(in Input) (*Props, error) {
 			Width:  size.width,
 			Height: size.height,
 			FPS:    s.Meta.FPS,
-			// クレジットシーンの分まで含めた最終的な尺。今はまだ尺を持たないが、
-			// 足し方をここで決めておけば issue #17 で長さを入れるだけで済む。
+			// クレジットシーンの分まで含めた最終的な尺（→ issue #17）。
+			// クレジットは最後のシーンの直後に置くと決まっていて繋ぎも持たないので、
+			// 総尺はこの足し算だけで出る。表示しない場合は credits.DurationInFrames が 0 になり、
+			// 式を分岐させずにそのまま伸びない値になる。
 			DurationInFrames: tl.TotalFrames + credits.DurationInFrames,
 		},
 		Scenes:  scenes,
@@ -240,11 +261,16 @@ func assetPath(p string) (string, error) {
 	return slashed, nil
 }
 
-// buildCredits は台本で使われた話者からクレジットを集計する。
+// BuildCredits は台本で使われた話者からクレジットを集計する。
 //
 // 集計の単位はスタイルではなくキャラクターにする。規約が求めているのは音声ライブラリ単位の表記なので、
 // 同じ話者のノーマルとあまあまを使い分けても、書くべきクレジットは1つだからである。
-func buildCredits(s *script.Script, resolved map[string]SpeakerCredit) (Credits, error) {
+//
+// Build の一部でありながら公開しているのは、`scenaremo credits`（→ issue #16）が
+// 音声を合成せずに同じクレジットを出す必要があるためである。あちらへ集計をもう1つ書くと、
+// props.json に載るクレジットと `scenaremo credits` の出力が静かに食い違い、
+// 表記漏れを機械的に防ぐという目的そのものが崩れる。
+func BuildCredits(s *script.Script, resolved map[string]SpeakerCredit) (Credits, error) {
 	// 同名の別話者を1件にまとめてしまわないよう、UUID が分かるならそちらを優先して数える。
 	type key struct{ engine, identity string }
 
@@ -298,10 +324,27 @@ func buildCredits(s *script.Script, resolved map[string]SpeakerCredit) (Credits,
 		out = append(out, *entry)
 	}
 
+	// クレジットシーンの尺を決める（→ issue #17）。0 は「表示しない」を表し、
+	// meta.durationInFrames もその分だけ伸びない。
+	//
+	// 台本が meta.creditsScene: false で切っているときのほか、載せる表記が 1 件も無いときも 0 にする。
+	// 後者を通してしまうと、何も書かれていない画が末尾に数秒残ることになる。
+	// entries のほうは切っていても返す。renderer が独自に表示できるという契約のためで、
+	// 「表示しない」のはこのシーンだけであって集計そのものではない。
+	//
+	// CreditsScene は ApplyDefaults を通っていれば nil にならないが、nil は既定と同じ「有効」として読む。
+	// この関数は Build 以外からも呼ばれうるので、埋め忘れで落ちるより安全側の既定に倒すほうがよい。
+	enabled := s.Meta.CreditsScene == nil || *s.Meta.CreditsScene
+	frames := 0
+	if enabled && len(out) > 0 {
+		// ms → フレームの変換は CLI の仕事（renderer 側でやり直させない）。
+		// 丸めは timeline と同じ切り上げに揃える。規則が 1 つで説明できるほうが契約として強い。
+		ms := CreditsBaseMs + CreditsPerEntryMs*len(out)
+		frames = (ms*s.Meta.FPS + 999) / 1000
+	}
+
 	return Credits{
-		// クレジットシーンはまだ尺を持たない（→ issue #17）。
-		// 0 は「表示しない」を表し、meta.durationInFrames もその分だけ伸びない。
-		DurationInFrames: 0,
+		DurationInFrames: frames,
 		Entries:          out,
 	}, nil
 }

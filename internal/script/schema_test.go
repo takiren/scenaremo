@@ -148,6 +148,14 @@ scenes: [{image: a.png, props: {なんでも: [1, {深い: {入れ子: true}}]},
 `,
 		},
 		{
+			name: "クレジットシーンを切れる",
+			yaml: `
+meta: {title: t, creditsScene: false}
+speakers: {zundamon: {styleId: 3}}
+scenes: [{image: a.png, lines: [{text: こんにちは}]}]
+`,
+		},
+		{
 			name: "JSON 台本向けに $schema キーを書ける",
 			yaml: `
 $schema: ../../docs/schema.json
@@ -226,6 +234,16 @@ scenes: [{image: a.png, lines: [{text: こんにちは}]}]
 			want: "/meta/fps:minimum",
 			yaml: `
 meta: {title: t, fps: 0}
+speakers: {zundamon: {styleId: 3}}
+scenes: [{image: a.png, lines: [{text: こんにちは}]}]
+`,
+		},
+		{
+			// 切るつもりで "no" と書いても通ってしまうと、意図せずクレジットが入る。
+			name: "creditsScene が true / false でない",
+			want: "/meta/creditsScene:type",
+			yaml: `
+meta: {title: t, creditsScene: "no"}
 speakers: {zundamon: {styleId: 3}}
 scenes: [{image: a.png, lines: [{text: こんにちは}]}]
 `,
