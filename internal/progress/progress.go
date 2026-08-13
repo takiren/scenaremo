@@ -17,12 +17,14 @@ import (
 	"fmt"
 	"io"
 	"strings"
+	"sync"
 	"time"
 )
 
 // Printer は進み具合を io.Writer へ書き出す。ゼロ値は使えないので New で作る。
 type Printer struct {
-	w io.Writer
+	mu sync.Mutex
+	w  io.Writer
 
 	// now は経過時間を測る時計。テストから固定できるよう差し替え口にしている。
 	now func() time.Time
@@ -36,7 +38,8 @@ type Printer struct {
 
 	// pending は LineStart で書きかけた行がまだ閉じられていないこと。
 	// 呼ばれ方が想定と違っても「1 件 1 行」を崩さないための見張りに使う。
-	pending bool
+	pending      bool
+	pendingIndex int
 }
 
 // Option は Printer の設定。
@@ -70,6 +73,9 @@ func New(w io.Writer, opts ...Option) *Printer {
 
 // Start は総数を伝える 1 行を書き、経過時間の計測を始める。
 func (p *Printer) Start(total int) {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+
 	p.endPendingLine()
 	p.total = total
 	p.startedAt = p.now()
@@ -80,6 +86,9 @@ func (p *Printer) Start(total int) {
 // LineStart は 1 件の合成を始めたことを、行の途中まで書いて伝える。
 // 行を閉じないのは、待っている間ずっと「いま何を喋らせているか」が最終行に見えているようにするため。
 func (p *Printer) LineStart(index int, speaker, text string) {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+
 	p.endPendingLine()
 
 	// 空の項目は区切りごと落とす。話者名やセリフが空のときに
@@ -93,24 +102,31 @@ func (p *Printer) LineStart(index int, speaker, text string) {
 	}
 	p.write(strings.Join(fields, " ") + " ...")
 	p.pending = true
+	p.pendingIndex = index
 }
 
 // LineDone は 1 件の結果を同じ行へ書き足して閉じる。
 // cached が true なら、その旨を添える。2 回目以降が速い理由が利用者に見えることが
 // キャッシュを持つことの意味なので、ここは黙って速いだけにはしない。
 func (p *Printer) LineDone(index int, cached bool, d time.Duration) {
-	if !p.pending {
-		// LineStart を経ずに呼ばれた場合。書きかけの行が無いので、
-		// せめて何件目かが分かる形で行頭から書き始める。
-		p.write(counter(index, p.total) + " ...")
-	}
-	p.pending = false
+	p.mu.Lock()
+	defer p.mu.Unlock()
 
-	line := " " + formatSeconds(d)
-	if cached {
-		line += " (キャッシュ)"
+	if p.pending && p.pendingIndex == index {
+		p.pending = false
+		line := " " + formatSeconds(d)
+		if cached {
+			line += " (キャッシュ)"
+		}
+		p.writeLine(line)
+	} else {
+		p.endPendingLine()
+		line := counter(index, p.total) + " 完了: " + formatSeconds(d)
+		if cached {
+			line += " (キャッシュ)"
+		}
+		p.writeLine(line)
 	}
-	p.writeLine(line)
 }
 
 // Done は内訳と経過時間を 1 行で書く。
@@ -118,6 +134,9 @@ func (p *Printer) LineDone(index int, cached bool, d time.Duration) {
 // 件数は synthesized+cached を出す。Start の総数を出すと、Start を呼ばれていない場合や
 // 途中で打ち切られた場合に内訳と食い違った数が並ぶことになり、どちらが本当か読み手に分からなくなるため。
 func (p *Printer) Done(synthesized, cached int) {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+
 	p.endPendingLine()
 	p.writeLine(fmt.Sprintf(
 		"合成 %d 件・キャッシュ %d 件 (%d 件, %s)",
@@ -130,7 +149,11 @@ func (p *Printer) Done(synthesized, cached int) {
 // 合成は途中で失敗しうる（エンジンが落ちた、Ctrl-C など）。そのとき LineStart で開いた行は
 // LineDone を待たずに終わるので、閉じずにいると失敗の報告が「…セリフ ...」の続きに繋がってしまう。
 // 失敗の報告は利用者が最も注意して読む文なので、そこだけは行頭から始まるようにしておく。
-func (p *Printer) End() { p.endPendingLine() }
+func (p *Printer) End() {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	p.endPendingLine()
+}
 
 // elapsed は Start からの経過時間。Start を呼ばれていなければ 0 を返す。
 // 時計が巻き戻った場合（NTP の補正など）も負の値は返さない。

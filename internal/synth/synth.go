@@ -16,6 +16,7 @@ import (
 	"path/filepath"
 	"slices"
 	"strings"
+	"sync"
 	"time"
 	"unicode/utf8"
 
@@ -160,60 +161,136 @@ func Run(ctx context.Context, in Input) (*Result, error) {
 	}
 
 	res := &Result{Audio: make([][]props.LineAudio, len(s.Scenes))}
-	reporter.Start(countLines(s))
+	total := countLines(s)
+	reporter.Start(total)
+
+	type job struct {
+		sceneIndex int
+		lineIndex  int
+		index      int
+		line       script.Line
+	}
+	jobs := make(chan job, total)
 
 	index := 0
 	for i, scene := range s.Scenes {
 		res.Audio[i] = make([]props.LineAudio, len(scene.Lines))
 		for j, line := range scene.Lines {
-			ref := lineRef(i, j, line.Text)
-
-			// ここで見ないと、キャッシュヒットばかりの回は Synthesize を通らないため
-			// ctx を確認する機会が無く、Ctrl-C が効かなくなる。
-			if err := ctx.Err(); err != nil {
-				return nil, fmt.Errorf("%s: 音声の合成を中断しました。ここまでの音声はキャッシュに残っているので、"+
-					"再実行すれば続きから進みます: %w", ref, err)
-			}
-
-			kind, req, err := lineRequest(s, line)
-			if err != nil {
-				return nil, fmt.Errorf("%s: %w", ref, err)
-			}
-			engine, err := in.Engines.Engine(kind)
-			if err != nil {
-				return nil, fmt.Errorf("%s: 話者 %q のエンジンを引けませんでした: %w", ref, line.Speaker, err)
-			}
-			if engine == nil {
-				// EngineResolver は差し替えられる口なので、(nil, nil) を返す実装に当たっても
-				// nil 参照で落ちずに、どこが悪いのかを言えるようにしておく。
-				return nil, fmt.Errorf("%s: 話者 %q のエンジン %q を引けませんでした"+
-					"（エンジンが nil で返りました。scenaremo の不具合です。issue で報告してください）", ref, line.Speaker, kind)
-			}
-
-			// wav のファイル名はこのキーそのもの。examples/minimal/props.json も同じ規則で組み立てられている。
-			key := cache.Key(kind, req)
-
-			reporter.LineStart(index, line.Speaker, line.Text)
-			d, cached, err := prepareWAV(ctx, in, engine, key, req)
-			if err != nil {
-				return nil, fmt.Errorf("%s: %w", ref, err)
-			}
-			reporter.LineDone(index, cached, d)
-
-			if cached {
-				res.Cached++
-			} else {
-				res.Synthesized++
-			}
-			res.Audio[i][j] = props.LineAudio{
-				// 区切りは常に / 。props.json は別の OS でも読めなければならない（→ internal/props の assetPath）。
-				Path:     dir + "/" + key + ".wav",
-				Duration: d,
+			jobs <- job{
+				sceneIndex: i,
+				lineIndex:  j,
+				index:      index,
+				line:       line,
 			}
 			index++
 		}
 	}
+	close(jobs)
 
+	// 親の ctx がキャンセルされたときに他の worker も止めるための context
+	ctx, cancel := context.WithCancel(ctx)
+	defer cancel()
+
+	var (
+		mu          sync.Mutex
+		firstErr    error
+		synthesized int
+		cachedCount int
+	)
+
+	workers := in.Workers
+	if workers <= 0 {
+		workers = 1
+	}
+
+	var wg sync.WaitGroup
+	for w := 0; w < workers; w++ {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			for jb := range jobs {
+				ref := lineRef(jb.sceneIndex, jb.lineIndex, jb.line.Text)
+
+				if err := ctx.Err(); err != nil {
+					mu.Lock()
+					if firstErr == nil {
+						firstErr = fmt.Errorf("%s: 音声の合成を中断しました。ここまでの音声はキャッシュに残っているので、"+
+							"再実行すれば続きから進みます: %w", ref, err)
+						cancel()
+					}
+					mu.Unlock()
+					continue
+				}
+
+				kind, req, err := lineRequest(s, jb.line)
+				if err != nil {
+					mu.Lock()
+					if firstErr == nil {
+						firstErr = fmt.Errorf("%s: %w", ref, err)
+						cancel()
+					}
+					mu.Unlock()
+					continue
+				}
+
+				engine, err := in.Engines.Engine(kind)
+				if err != nil {
+					mu.Lock()
+					if firstErr == nil {
+						firstErr = fmt.Errorf("%s: 話者 %q のエンジンを引けませんでした: %w", ref, jb.line.Speaker, err)
+						cancel()
+					}
+					mu.Unlock()
+					continue
+				}
+				if engine == nil {
+					mu.Lock()
+					if firstErr == nil {
+						firstErr = fmt.Errorf("%s: 話者 %q のエンジン %q を引けませんでした"+
+							"（エンジンが nil で返りました。scenaremo の不具合です。issue で報告してください）", ref, jb.line.Speaker, kind)
+						cancel()
+					}
+					mu.Unlock()
+					continue
+				}
+
+				key := cache.Key(kind, req)
+
+				reporter.LineStart(jb.index, jb.line.Speaker, jb.line.Text)
+				d, cached, err := prepareWAV(ctx, in, engine, key, req)
+				if err != nil {
+					mu.Lock()
+					if firstErr == nil {
+						firstErr = fmt.Errorf("%s: %w", ref, err)
+						cancel()
+					}
+					mu.Unlock()
+					continue
+				}
+				reporter.LineDone(jb.index, cached, d)
+
+				mu.Lock()
+				if cached {
+					cachedCount++
+				} else {
+					synthesized++
+				}
+				res.Audio[jb.sceneIndex][jb.lineIndex] = props.LineAudio{
+					Path:     dir + "/" + key + ".wav",
+					Duration: d,
+				}
+				mu.Unlock()
+			}
+		}()
+	}
+	wg.Wait()
+
+	if firstErr != nil {
+		return nil, firstErr
+	}
+
+	res.Synthesized = synthesized
+	res.Cached = cachedCount
 	reporter.Done(res.Synthesized, res.Cached)
 	return res, nil
 }

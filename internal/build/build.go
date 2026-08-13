@@ -60,6 +60,9 @@ type Options struct {
 	// Reporter は合成の進み具合の通知先。nil なら何も通知しない。
 	Reporter synth.Reporter
 
+	// Workers は音声合成の並列数。
+	Workers int
+
 	// NewEngine はエンジンを作る関数。nil なら実物の tts クライアントを作る。
 	NewEngine EngineFactory
 }
@@ -120,6 +123,7 @@ func Run(ctx context.Context, opts Options) (*Result, error) {
 		Store:       cache.NewStore(layout.AudioDir),
 		RelAudioDir: layout.RelAudioDir(),
 		NoCache:     opts.NoCache,
+		Workers:     opts.Workers,
 		Reporter:    opts.Reporter,
 	})
 	if err != nil {
