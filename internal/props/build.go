@@ -111,7 +111,7 @@ func Build(in Input) (*Props, error) {
 		return nil, err
 	}
 
-	credits, err := buildCredits(s, in.Credits)
+	credits, err := BuildCredits(s, in.Credits)
 	if err != nil {
 		return nil, err
 	}
@@ -240,11 +240,16 @@ func assetPath(p string) (string, error) {
 	return slashed, nil
 }
 
-// buildCredits は台本で使われた話者からクレジットを集計する。
+// BuildCredits は台本で使われた話者からクレジットを集計する。
 //
 // 集計の単位はスタイルではなくキャラクターにする。規約が求めているのは音声ライブラリ単位の表記なので、
 // 同じ話者のノーマルとあまあまを使い分けても、書くべきクレジットは1つだからである。
-func buildCredits(s *script.Script, resolved map[string]SpeakerCredit) (Credits, error) {
+//
+// Build の一部でありながら公開しているのは、`scenaremo credits`（→ issue #16）が
+// 音声を合成せずに同じクレジットを出す必要があるためである。あちらへ集計をもう1つ書くと、
+// props.json に載るクレジットと `scenaremo credits` の出力が静かに食い違い、
+// 表記漏れを機械的に防ぐという目的そのものが崩れる。
+func BuildCredits(s *script.Script, resolved map[string]SpeakerCredit) (Credits, error) {
 	// 同名の別話者を1件にまとめてしまわないよう、UUID が分かるならそちらを優先して数える。
 	type key struct{ engine, identity string }
 
