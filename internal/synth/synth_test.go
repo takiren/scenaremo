@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"reflect"
 	"slices"
 	"strings"
 	"sync"
@@ -312,9 +313,12 @@ func TestRun_キャッシュがあればエンジンを呼ばない(t *testing.T
 		t.Errorf("Synthesized = %d, Cached = %d, 期待値 0 / 3", got.Synthesized, got.Cached)
 	}
 	// パスも長さも 1 回目と同じであること。キャッシュを通ると尺が変わる、では困る。
+	//
+	// LineAudio はこのあとスライスの項目を持つ（→ issue #20）ので、== では比べられなくなる。
+	// 比べたいのは「1 回目とすべて同じか」なので、先に DeepEqual にしておく。
 	for i := range got.Audio {
 		for j := range got.Audio[i] {
-			if got.Audio[i][j] != first.Audio[i][j] {
+			if !reflect.DeepEqual(got.Audio[i][j], first.Audio[i][j]) {
 				t.Errorf("Audio[%d][%d] = %+v, 1 回目 = %+v (一致すべき)", i, j, got.Audio[i][j], first.Audio[i][j])
 			}
 		}
