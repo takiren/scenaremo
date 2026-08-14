@@ -15,11 +15,14 @@ jobs:
       - name: Set up Go
         uses: actions/setup-go@v7
         with:
-          # Version or version range of Go to use
-          go-version: '1.26'
-
           # Path to go.mod, go.work, .go-version, or .tool-versions file
-          # Note: if both go-version and go-version-file are provided, go-version takes precedence.
+          #
+          # go-version は指定しない。両方を渡すと go-version が優先され、'1.26' のような
+          # 範囲指定はその時点で setup-go が知っている最新（例: 1.26.5）に解決されるため、
+          # go.mod が要求する版に届かないことがある。setup-go は GOTOOLCHAIN=local を
+          # 立てるので、そのとき go は自分で新しい toolchain を取りに行けず、
+          # golangci-lint が「go.mod requires go >= X」で落ちる。
+          # build-and-test ジョブと同じく、版の正は go.mod 1 箇所にしておく。
           go-version-file: 'go.mod'
 
           # Set this option if you want the action to check for the latest available version
