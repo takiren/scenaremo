@@ -6,6 +6,7 @@ import (
 	"io"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 
 	"github.com/takiren/scenaremo/internal/build"
@@ -94,8 +95,13 @@ func TestRun_Success_DefaultOut(t *testing.T) {
 	if mockCommandArgs[0] != "render" {
 		t.Errorf("got sub-command %q, want \"render\"", mockCommandArgs[0])
 	}
-	if mockCommandArgs[3] != expectedOutPath {
-		t.Errorf("got output arg %q, want %q", mockCommandArgs[3], expectedOutPath)
+	// remotion は renderer ディレクトリで動くので、パス引数は絶対パスでなければならない。
+	expectedOutArg, err := filepath.Abs(expectedOutPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if mockCommandArgs[3] != expectedOutArg {
+		t.Errorf("got output arg %q, want %q", mockCommandArgs[3], expectedOutArg)
 	}
 	hasPublicDir := false
 	hasProps := false
@@ -187,6 +193,79 @@ func TestRun_Success_CustomOut_Codec_CRF(t *testing.T) {
 	}
 	if !hasCRF {
 		t.Errorf("missing --crf=18 in %v", mockCommandArgs)
+	}
+}
+
+// remotion は renderer ディレクトリで動くため、cwd 基準の相対パスをそのまま渡すと
+// renderer/ の下を指してしまう。とくに --props は存在しないパスを JSON 文字列と解釈するので、
+// 「JSON.parse できない」という原因から遠いエラーになる。絶対パス化を固定しておく。
+func TestRun_RelativePathsArePassedAsAbsolute(t *testing.T) {
+	tmpDir := t.TempDir()
+	t.Chdir(tmpDir)
+
+	videoDir := filepath.Join("examples", "minimal")
+	if err := os.MkdirAll(videoDir, 0755); err != nil {
+		t.Fatal(err)
+	}
+	rendererDir := filepath.Join(tmpDir, "renderer")
+	binDir := filepath.Join(rendererDir, "node_modules", ".bin")
+	if err := os.MkdirAll(binDir, 0755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(rendererDir, "package.json"), []byte("{}"), 0644); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(binDir, "remotion"), []byte("#!/bin/sh\nexit 0\n"), 0755); err != nil {
+		t.Fatal(err)
+	}
+
+	propsPath := filepath.Join(videoDir, ".scenaremo", "props.json")
+
+	var mockCommandArgs []string
+	opts := render.Options{
+		Dir:         videoDir,
+		RendererDir: rendererDir,
+		BuildRunner: func(ctx context.Context, bOpts build.Options) (*build.Result, error) {
+			return &build.Result{
+				Props:  &props.Props{},
+				Layout: &project.Layout{PropsPath: propsPath},
+			}, nil
+		},
+		CommandRunner: func(ctx context.Context, name string, args []string, dir string, stdout, stderr io.Writer) error {
+			mockCommandArgs = args
+			return nil
+		},
+	}
+
+	res, err := render.Run(context.Background(), opts)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	for _, arg := range mockCommandArgs {
+		for _, flag := range []string{"--props=", "--public-dir="} {
+			value, ok := strings.CutPrefix(arg, flag)
+			if !ok {
+				continue
+			}
+			if !filepath.IsAbs(value) {
+				t.Errorf("%s が絶対パスでない: %q", flag, value)
+			}
+			if _, err := os.Stat(value); err != nil && flag == "--public-dir=" {
+				t.Errorf("--public-dir が存在しないパスを指している: %q", value)
+			}
+		}
+	}
+	if len(mockCommandArgs) < 4 {
+		t.Fatalf("not enough arguments: %v", mockCommandArgs)
+	}
+	if !filepath.IsAbs(mockCommandArgs[3]) {
+		t.Errorf("出力パスが絶対パスでない: %q", mockCommandArgs[3])
+	}
+
+	// 利用者へ見せるパスは指定どおりの相対パスのままであること。
+	if res.OutPath != filepath.Join("out", "minimal.mp4") {
+		t.Errorf("got OutPath %q, want %q", res.OutPath, filepath.Join("out", "minimal.mp4"))
 	}
 }
 
