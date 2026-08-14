@@ -89,13 +89,30 @@ func Run(ctx context.Context, opts Options) (*Result, error) {
 	entryPoint := filepath.Join("src", "index.ts")
 	composition := "Slideshow"
 
+	// remotion を renderer ディレクトリで動かすため、パスを受け取る引数はすべて絶対パスで渡す
+	// （解決は cwd 基準であるため、相対パスだと renderer/ の下を指してしまう）。
+	// とくに --props は「ファイルが無ければ JSON 文字列」と解釈されるため、
+	// 相対パスのままだと JSON.parse に失敗したという原因から遠いエラーになる。
+	absProps, err := filepath.Abs(bRes.Layout.PropsPath)
+	if err != nil {
+		return nil, fmt.Errorf("props.json の絶対パスを取得できませんでした: %w", err)
+	}
+	absPublic, err := filepath.Abs(opts.Dir)
+	if err != nil {
+		return nil, fmt.Errorf("動画ディレクトリの絶対パスを取得できませんでした: %w", err)
+	}
+	absOut, err := filepath.Abs(outPath)
+	if err != nil {
+		return nil, fmt.Errorf("出力先の絶対パスを取得できませんでした: %w", err)
+	}
+
 	args := []string{
 		"render",
 		entryPoint,
 		composition,
-		outPath,
-		"--public-dir=" + opts.Dir,
-		"--props=" + bRes.Layout.PropsPath,
+		absOut,
+		"--public-dir=" + absPublic,
+		"--props=" + absProps,
 	}
 
 	if opts.Codec != "" {
