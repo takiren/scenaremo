@@ -8,7 +8,8 @@
   "scripts": {
     "studio": "remotion studio src/index.ts",
     "render": "remotion render src/index.ts Slideshow",
-    "typecheck": "tsc --noEmit"
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run"
   },
   "dependencies": {
     "@remotion/cli": "4.0.508",
@@ -21,6 +22,7 @@
   "devDependencies": {
     "@types/react": "19.0.0",
     "@types/react-dom": "19.0.0",
-    "typescript": "5.7.3"
+    "typescript": "5.7.3",
+    "vitest": "4.1.10"
   }
 }
