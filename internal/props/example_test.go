@@ -24,7 +24,7 @@ const exampleDir = "../../examples/minimal"
 // VOICEVOX で実際に合成した値ではなく、サンプルとして固定した値である。
 // ここを実測に頼ると、エンジンのバージョンが変わるたびにサンプルが揺れてテストが落ちる。
 var exampleDurations = []time.Duration{
-	2400 * time.Millisecond, // 今日はRemotionの話をするのだ
+	2400 * time.Millisecond, // 今日はリモーションの話をするのだ
 	3120 * time.Millisecond, // スライドショー形式の / 解説動画を作りますね
 	1880 * time.Millisecond, // まず台本を書くのだ
 	2760 * time.Millisecond, // あとはCLIが音声を作ってくれるのだ

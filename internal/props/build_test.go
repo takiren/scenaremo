@@ -440,6 +440,56 @@ func TestBuildPassesThroughComponent(t *testing.T) {
 	}
 }
 
+// TestBuildCaption は字幕に出す文字列が解決済みで載ることを確かめる（→ issue #21）。
+//
+// 読み上げた文字列 (text) をそのまま字幕にすると、読み仮名を書いた行で視聴者が綴りを
+// 受け取れない。分けたうえで、省略された行のフォールバックは CLI が解決してから渡す。
+func TestBuildCaption(t *testing.T) {
+	in := baseInput()
+	in.Script.Scenes[0].Lines[0].Text = "クーベルネティスの話をするのだ"
+	in.Script.Scenes[0].Lines[0].Caption = "Kubernetes の話をするのだ"
+
+	got := build(t, in)
+
+	if got.Scenes[0].Lines[0].Caption != "Kubernetes の話をするのだ" {
+		t.Errorf("Scenes[0].Lines[0].Caption: got %q, want %q",
+			got.Scenes[0].Lines[0].Caption, "Kubernetes の話をするのだ")
+	}
+	// 読み上げた文字列のほうは書き換わらない。音はこちらで作られている。
+	if got.Scenes[0].Lines[0].Text != "クーベルネティスの話をするのだ" {
+		t.Errorf("Scenes[0].Lines[0].Text: got %q, want %q",
+			got.Scenes[0].Lines[0].Text, "クーベルネティスの話をするのだ")
+	}
+	// 省略した行は text がそのまま字幕になる。renderer 側で二度フォールバックさせないため、
+	// props.json には常に埋まった値が載る。
+	if got.Scenes[0].Lines[1].Caption != got.Scenes[0].Lines[1].Text {
+		t.Errorf("caption を省略した行: Caption %q が Text %q と違う",
+			got.Scenes[0].Lines[1].Caption, got.Scenes[0].Lines[1].Text)
+	}
+}
+
+// TestBuildSpeakers は話者の見た目の属性が props.json へ写ることを確かめる（→ issue #21）。
+func TestBuildSpeakers(t *testing.T) {
+	in := baseInput()
+	in.Script.Speakers["zundamon"] = script.Speaker{
+		Engine: script.EngineVoicevox, StyleID: 3, Color: "#69C6A0",
+	}
+
+	got := build(t, in)
+
+	if got.Speakers["zundamon"].Color != "#69C6A0" {
+		t.Errorf("Speakers[zundamon].Color: got %q, want \"#69C6A0\"", got.Speakers["zundamon"].Color)
+	}
+	// 色を指定していない話者も載る。既定色は renderer の持ち物なので、ここでは埋めない。
+	metan, ok := got.Speakers["metan"]
+	if !ok {
+		t.Fatalf("色を指定していない話者が Speakers に載っていない: %+v", got.Speakers)
+	}
+	if metan.Color != "" {
+		t.Errorf("Speakers[metan].Color: got %q, want \"\" (既定色は renderer が決める)", metan.Color)
+	}
+}
+
 // TestBuildErrors は props.json を壊すより先に止まるべき入力を確かめる。
 func TestBuildErrors(t *testing.T) {
 	tests := []struct {

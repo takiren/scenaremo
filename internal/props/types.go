@@ -46,6 +46,10 @@ type Props struct {
 	// Meta は動画全体の設定。
 	Meta Meta `json:"meta"`
 
+	// Speakers は話者エイリアスから、描画に要る属性への対応表。
+	// 台本に定義されたすべての話者が入る（→ issue #21）。
+	Speakers map[string]Speaker `json:"speakers"`
+
 	// Scenes はシーンの並び。台本の scenes と 1 対 1 で対応する。
 	Scenes []Scene `json:"scenes"`
 
@@ -78,6 +82,22 @@ type Meta struct {
 	//
 	// TransitionSeries の尺の式（各シーケンスの尺の合計 − トランジションの尺の合計）と一致する。
 	DurationInFrames int `json:"durationInFrames"`
+}
+
+// Speaker は話者エイリアス1件分の、描画に要る属性。
+//
+// 台本の speakers から見た目に関わるものだけを写す。合成のパラメータ（StyleID や SpeedScale）は
+// 載せない。音はもう作り終わっていて、renderer から使い道が無いためである。
+//
+// 色をセリフの側に持たせないのは、色が話者の属性であって行の属性ではないからである。
+// 同じ話者の行すべてに同じ色を並べると、片方だけ書き換わった props.json を作れてしまう。
+type Speaker struct {
+	// Color は字幕の文字色。台本の speakers[].color をそのまま渡す。
+	// 台本が指定していなければ空になり、JSON にも出ない。
+	//
+	// 既定色をここで埋めないのは、見た目の既定が renderer の持ち物だからである
+	// （CLI は音とタイムラインまでを担い、色は決めない）。
+	Color string `json:"color,omitempty"`
 }
 
 // Scene は画像1枚と、その間に喋るセリフの集まり。
@@ -133,8 +153,16 @@ type Line struct {
 	// Speaker は話者エイリアス。台本で省略されていた場合は既定値が解決済みで入っている。
 	Speaker string `json:"speaker"`
 
-	// Text は読み上げた文章。台本に書かれたまま（改行も保持する）で、字幕はこれを使う。
+	// Text は読み上げた文章。台本に書かれたまま（改行も保持する）。
+	// エンジンへ渡したのはこの文字列で、字幕に出すのは Caption のほうである。
 	Text string `json:"text"`
+
+	// Caption は字幕に出す文章（→ issue #21）。
+	// 台本が lines[].caption を省略していれば Text と同じ値が入る。
+	//
+	// フォールバックを CLI 側で解決してから渡すのは、台本の既定値の解決が CLI の仕事だからである
+	// （lines[].speaker を defaults.speaker で埋めるのと同じ）。
+	Caption string `json:"caption"`
 
 	// Audio は合成された wav のパス。Image と同じく動画ディレクトリからの相対で / 区切り。
 	// .scenaremo/ 以下を指すが、ドット始まりのディレクトリも public dir として配信されることは確認済み。

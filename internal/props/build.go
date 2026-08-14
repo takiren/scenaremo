@@ -166,9 +166,26 @@ func Build(in Input) (*Props, error) {
 			// 式を分岐させずにそのまま伸びない値になる。
 			DurationInFrames: tl.TotalFrames + credits.DurationInFrames,
 		},
-		Scenes:  scenes,
-		Credits: credits,
+		Speakers: buildSpeakers(s),
+		Scenes:   scenes,
+		Credits:  credits,
 	}, nil
+}
+
+// buildSpeakers は台本の話者定義から、描画に要る属性だけを写す。
+//
+// 台本に定義されたすべての話者を入れる。使われていない話者まで載るが、
+// 「台本の speakers をそのまま写したもの」という説明のほうが、
+// 「使われた話者だけ」より読み手に予測しやすいためである（クレジットは規約上の要求が別にあるので、
+// あちらは使われた話者だけを集計する）。
+func buildSpeakers(s *script.Script) map[string]Speaker {
+	speakers := make(map[string]Speaker, len(s.Speakers))
+	for alias, speaker := range s.Speakers {
+		// 見た目に関わるものだけを写す。合成のパラメータは音を作り終えた時点で用済みで、
+		// renderer から使い道が無い。
+		speakers[alias] = Speaker{Color: speaker.Color}
+	}
+	return speakers
 }
 
 // timelineInput は台本と合成結果をタイムライン計算の入力へ直す。
@@ -277,8 +294,11 @@ func buildScenes(s *script.Script, audio [][]LineAudio, tl timeline.Timeline) ([
 			moras := frameMoras(audio[i][j].Moras, s.Meta.FPS, lineDurFrames)
 
 			lines = append(lines, Line{
-				Speaker:          line.Speaker,
-				Text:             line.Text,
+				Speaker: line.Speaker,
+				Text:    line.Text,
+				// 台本が caption を省略していれば text がそのまま字幕になる（→ issue #21）。
+				// フォールバックはここで解決し、props.json には常に埋まった値を載せる。
+				Caption:          line.CaptionText(),
 				Audio:            audioPath,
 				StartFrame:       tl.Scenes[i].Lines[j].StartFrame,
 				DurationInFrames: lineDurFrames,
