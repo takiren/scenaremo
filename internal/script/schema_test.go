@@ -156,6 +156,20 @@ scenes: [{image: a.png, lines: [{text: こんにちは}]}]
 `,
 		},
 		{
+			// 読み上げる文字列と、字幕に見せる文字列を分けられる（→ issue #21）。
+			name: "caption と color を書ける",
+			yaml: `
+meta: {title: t}
+speakers: {zundamon: {styleId: 3, color: "#69C6A0"}, metan: {styleId: 2, color: "#fff"}}
+scenes:
+  - image: a.png
+    lines:
+      - text: クーベルネティスは、コンテナを束ねる仕組みなのだ
+        caption: Kubernetes は、コンテナを束ねる仕組みなのだ
+      - text: 多くの場合これで足りるのだ
+`,
+		},
+		{
 			name: "JSON 台本向けに $schema キーを書ける",
 			yaml: `
 $schema: ../../docs/schema.json
@@ -320,6 +334,18 @@ scenes: [{image: a.png, lines: [{text: こんにちは}]}]
 `,
 		},
 		{
+			// 色の書き方を間違えると、字幕がその話者だけ既定色に戻った動画が黙って出てくる。
+			// CSS の色名や rgba() を受け付けないのは、書ける形を 1 つに絞ったほうが
+			// 打ち間違いをその場で言えるためである。
+			name: "color が 16 進数の色でない",
+			want: "/speakers/zundamon/color:pattern",
+			yaml: `
+meta: {title: t}
+speakers: {zundamon: {styleId: 3, color: green}}
+scenes: [{image: a.png, lines: [{text: こんにちは}]}]
+`,
+		},
+		{
 			name: "defaults のフィールド名の打ち間違い",
 			want: "/defaults:additionalProperties",
 			yaml: `
@@ -457,6 +483,17 @@ scenes: [{image: a.png, lines: [{speaker: zundamon}]}]
 meta: {title: t}
 speakers: {zundamon: {styleId: 3}}
 scenes: [{image: a.png, lines: [{text: こんにちは}, {text: ""}]}]
+`,
+		},
+		{
+			// 空の caption は「字幕を出さない」ではなく書きかけである。
+			// 通すと、その行だけ何も出ない字幕になる（→ issue #21）。
+			name: "lines[].caption が空",
+			want: "/scenes/0/lines/0/caption:minLength",
+			yaml: `
+meta: {title: t}
+speakers: {zundamon: {styleId: 3}}
+scenes: [{image: a.png, lines: [{text: こんにちは, caption: ""}]}]
 `,
 		},
 		{

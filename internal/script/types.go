@@ -113,6 +113,16 @@ type Speaker struct {
 	// StyleID はエンジンのスタイル ID。必須。
 	StyleID int `yaml:"styleId" json:"styleId"`
 
+	// Color はこの話者のセリフを字幕に出すときの文字色（#RGB または #RRGGBB）。
+	// 空なら renderer 側の既定色（→ issue #21）。
+	//
+	// 立ち絵が無い構成では、話者が切り替わったことが字幕でしか分からない。
+	// 名前ラベル（「ずんだもん:」）は横幅を食うので、色で区別する。
+	//
+	// 合成には影響しない。音声のキャッシュキーは tts.SynthesizeRequest から作られるので、
+	// 色を変えても音を作り直すことにはならない。
+	Color string `yaml:"color,omitempty" json:"color,omitempty"`
+
 	// SpeedScale は話速。既定は 1.0。
 	SpeedScale *float64 `yaml:"speedScale,omitempty" json:"speedScale,omitempty"`
 
@@ -176,5 +186,26 @@ type Line struct {
 	Speaker string `yaml:"speaker,omitempty" json:"speaker,omitempty"`
 
 	// Text は読み上げる文章。必須。改行を含められる。
+	// エンジンへ渡るのはこちらで、字幕に出るのは Caption（空なら Text）である。
 	Text string `yaml:"text" json:"text"`
+
+	// Caption は字幕に出す文章。空なら Text がそのまま字幕になる（→ issue #21）。
+	//
+	// 聞いたことのない言葉ほどエンジンは正しく読まないため、Text には読み仮名を書くことになる。
+	// その文字列をそのまま字幕に出すと、視聴者は「クーベルネティス」を受け取って帰ることになり、
+	// 言葉を検索できない。読み上げる文字列と見せる文字列を分けるための項目である。
+	//
+	// フォールバックの解決は props.Build が行う（props.json には常に解決済みの値が載る）。
+	Caption string `yaml:"caption,omitempty" json:"caption,omitempty"`
+}
+
+// CaptionText は字幕に出す文章を返す。Caption が空なら Text へ倒す。
+//
+// フォールバックをこの 1 箇所に閉じ込めるのは、字幕の中身が「読み上げた文字列」と
+// 食い違いうる場所が増えるほど、どちらが出るのかを追えなくなるためである。
+func (l Line) CaptionText() string {
+	if l.Caption == "" {
+		return l.Text
+	}
+	return l.Caption
 }
