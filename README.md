@@ -1,5 +1,7 @@
 # scenaremo
 
+[![CI](https://github.com/takiren/scenaremo/actions/workflows/ci.yml/badge.svg)](https://github.com/takiren/scenaremo/actions/workflows/ci.yml)
+
 **台本(YAML)を1つ書くだけで、キャラが喋る解説動画ができる。**
 
 `scenaremo` は、YAML の台本から [VOICEVOX](https://voicevox.hiroshiba.jp/) で音声を合成し、

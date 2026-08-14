@@ -1,6 +1,6 @@
 module github.com/takiren/scenaremo
 
-go 1.26.4
+go 1.26.6
 
 require (
 	github.com/go-audio/audio v1.0.0

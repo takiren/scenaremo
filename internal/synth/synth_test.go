@@ -72,7 +72,13 @@ func wavBytes(d time.Duration) []byte {
 
 // fakeStore はメモリ上の保管庫。実物 (internal/cache.Store) と同じく
 // 見つからないときは os.ErrNotExist を包んだエラーを返す。
+//
+// Run は Workers の数だけ goroutine を立てて同時に Get / Put を呼ぶので、
+// 実物と同じくここも同時に呼ばれて安全でなければならない。
+// 守っていないと map への同時書き込みでテストごと落ちる（実際に CI で落ちた）。
+// 記録 (gets / puts / data) を読むのは Run が戻ったあとなので、そちらは素で触ってよい。
 type fakeStore struct {
+	mu   sync.Mutex
 	data map[string][]byte
 	gets []string
 	puts []string
@@ -85,6 +91,9 @@ func newStore() *fakeStore {
 }
 
 func (s *fakeStore) Get(key string) ([]byte, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
 	s.gets = append(s.gets, key)
 	data, ok := s.data[key]
 	if !ok {
@@ -94,6 +103,9 @@ func (s *fakeStore) Get(key string) ([]byte, error) {
 }
 
 func (s *fakeStore) Put(key string, wav []byte) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
 	s.puts = append(s.puts, key)
 	if s.putErr != nil {
 		return s.putErr
