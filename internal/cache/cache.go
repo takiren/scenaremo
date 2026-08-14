@@ -38,15 +38,39 @@ func (s *Store) Get(key string) ([]byte, error) {
 
 // Put は音声データをキャッシュに保存する。
 // 部分的な書き込みを防ぐため、一時ファイルに書き込んでからリネームする。
+//
+// 同時に呼ばれても安全である。--parallel で合成すると worker が同時に Put を呼び、
+// 同じ話者が同じ文を二度喋る台本ではキーまで同じになる（キャッシュはそもそも
+// 「同じ入力なら同じファイル」を狙って設計されている）。
+// そのため一時ファイルの名前はキーだけで決めず、呼び出しごとに別の名前にする。
+// 名前を共有すると、2 つの Put が同じ一時ファイルへ同時に書いて混ざった中身が
+// 本番の名前へ移るか、先に移されたあとの rename が「そんなファイルは無い」で落ちる。
 func (s *Store) Put(key string, wav []byte) error {
 	if err := os.MkdirAll(s.dir, 0755); err != nil {
 		return fmt.Errorf("キャッシュディレクトリの作成に失敗しました: %w", err)
 	}
 
 	path := filepath.Join(s.dir, key+".wav")
-	tempPath := path + ".tmp"
 
-	if err := os.WriteFile(tempPath, wav, 0644); err != nil {
+	temp, err := os.CreateTemp(s.dir, key+".*.wav.tmp")
+	if err != nil {
+		return fmt.Errorf("キャッシュへの書き込みに失敗しました: %w", err)
+	}
+	tempPath := temp.Name()
+
+	if _, err := temp.Write(wav); err != nil {
+		_ = temp.Close()
+		_ = os.Remove(tempPath)
+		return fmt.Errorf("キャッシュへの書き込みに失敗しました: %w", err)
+	}
+	if err := temp.Close(); err != nil {
+		_ = os.Remove(tempPath)
+		return fmt.Errorf("キャッシュへの書き込みに失敗しました: %w", err)
+	}
+	// CreateTemp は 0600 で作る。以前の実装（0644）と同じ見え方に揃えておく。
+	// Remotion を別のユーザやコンテナから走らせる構成でも wav が読めなくならないようにするため。
+	if err := os.Chmod(tempPath, 0644); err != nil {
+		_ = os.Remove(tempPath)
 		return fmt.Errorf("キャッシュへの書き込みに失敗しました: %w", err)
 	}
 
