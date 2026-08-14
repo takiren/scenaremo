@@ -68,7 +68,7 @@ jobs:
         run: go test -v ./...
 
   renderer:
-    name: Renderer Typecheck
+    name: Renderer Typecheck and Test
     runs-on: ubuntu-latest
     defaults:
       run:
@@ -95,3 +95,6 @@ jobs:
 
       - name: Typecheck
         run: pnpm typecheck
+
+      - name: Test
+        run: pnpm test
