@@ -35,6 +35,10 @@ import (
 const DefaultRelAudioDir = ".scenaremo/audio"
 
 // Store は合成済み wav の保管庫。internal/cache.Store がそのまま満たす。
+//
+// 実装は同時に呼ばれても安全でなければならない。Run は Workers の数だけ goroutine を立てて
+// Get / Put を呼ぶためで、しかも同じ話者が同じ文を二度喋る台本では、
+// 別々の worker が同じキーへ同時に書きに行く。
 type Store interface {
 	// Get はキーに対応する wav を返す。無ければ os.ErrNotExist をラップしたエラーを返す。
 	Get(key string) ([]byte, error)
