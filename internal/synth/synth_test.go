@@ -3,6 +3,7 @@ package synth_test
 import (
 	"context"
 	"encoding/binary"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"os"
@@ -78,17 +79,27 @@ func wavBytes(d time.Duration) []byte {
 // 実物と同じくここも同時に呼ばれて安全でなければならない。
 // 守っていないと map への同時書き込みでテストごと落ちる（実際に CI で落ちた）。
 // 記録 (gets / puts / data) を読むのは Run が戻ったあとなので、そちらは素で触ってよい。
+//
+// wav と AudioQuery を別々に持つのは実物と同じ。モーラ単位の長さは audio_query の
+// 応答にしか無いので、控えるのが音だけではキャッシュヒットのたびに失われる（→ issue #20）。
 type fakeStore struct {
-	mu   sync.Mutex
-	data map[string][]byte
-	gets []string
-	puts []string
+	mu      sync.Mutex
+	data    map[string][]byte
+	queries map[string][]byte
+	gets    []string
+	puts    []string
+	// queryGets / queryPuts は AudioQuery 側の出入りの記録。
+	queryGets []string
+	queryPuts []string
 	// putErr が非 nil なら Put は必ず失敗する。書き込めない状況の再現に使う。
 	putErr error
+	// putQueryErr が非 nil なら PutQuery は必ず失敗する。
+	// putErr と分けているのは、どちらが失敗したのかで文言が変わるべきだからである。
+	putQueryErr error
 }
 
 func newStore() *fakeStore {
-	return &fakeStore{data: map[string][]byte{}}
+	return &fakeStore{data: map[string][]byte{}, queries: map[string][]byte{}}
 }
 
 func (s *fakeStore) Get(key string) ([]byte, error) {
@@ -115,11 +126,54 @@ func (s *fakeStore) Put(key string, wav []byte) error {
 	return nil
 }
 
+func (s *fakeStore) GetQuery(key string) ([]byte, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	s.queryGets = append(s.queryGets, key)
+	data, ok := s.queries[key]
+	if !ok {
+		return nil, fmt.Errorf("キャッシュが見つかりません: %w", os.ErrNotExist)
+	}
+	return data, nil
+}
+
+func (s *fakeStore) PutQuery(key string, query []byte) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	s.queryPuts = append(s.queryPuts, key)
+	if s.putQueryErr != nil {
+		return s.putQueryErr
+	}
+	s.queries[key] = append([]byte(nil), query...)
+	return nil
+}
+
+// testQueryJSON は audio_query の応答の代わり。モーラ 2 つだけの短いもの。
+//
+// 先頭に prePhonemeLength = 0.1 秒の無音があるので、1 つめのモーラは 0.1 秒から始まる。
+const testQueryJSON = `{"accent_phrases":[{"moras":[` +
+	`{"text":"ア","consonant":null,"consonant_length":null,"vowel":"a","vowel_length":0.2,"pitch":5.0},` +
+	`{"text":"イ","consonant":null,"consonant_length":null,"vowel":"i","vowel_length":0.3,"pitch":5.0}` +
+	`],"accent":1,"pause_mora":null,"is_interrogative":false}],` +
+	`"speedScale":1.0,"pitchScale":0.0,"intonationScale":1.0,"volumeScale":1.0,` +
+	`"prePhonemeLength":0.1,"postPhonemeLength":0.1,"outputSamplingRate":24000,"outputStereo":false}`
+
+// wantTestQueryMoras は testQueryJSON から組み立てられるべきモーラ。
+var wantTestQueryMoras = []props.MoraTiming{
+	{Text: "ア", Vowel: "a", Offset: 100 * time.Millisecond, Duration: 200 * time.Millisecond},
+	{Text: "イ", Vowel: "i", Offset: 300 * time.Millisecond, Duration: 300 * time.Millisecond},
+}
+
 // fakeEngine は合成の代わりに、指定された長さの wav を組み立てて返すエンジン。
 type fakeEngine struct {
 	kind tts.EngineKind
 	// durations はテキストごとに返す wav の長さ。
 	durations map[string]time.Duration
+	// rawQueries はテキストごとに返す audio_query の応答。
+	// 指定の無いテキストでは、モーラを持たない空の AudioQuery が返る。
+	rawQueries map[string]string
 	// err が非 nil なら合成は必ず失敗する。
 	err error
 	// result が非 nil なら durations の代わりにこれを返す。壊れた wav を返させるのに使う。
@@ -157,7 +211,15 @@ func (e *fakeEngine) Synthesize(_ context.Context, req tts.SynthesizeRequest) (*
 	if !ok {
 		return nil, fmt.Errorf("テストの取りこぼし: %q の長さが決まっていない", req.Text)
 	}
-	return &tts.SynthesizeResult{WAV: wavBytes(d)}, nil
+
+	res := &tts.SynthesizeResult{WAV: wavBytes(d)}
+	if raw, ok := e.rawQueries[req.Text]; ok {
+		res.RawAudioQuery = []byte(raw)
+		if err := json.Unmarshal([]byte(raw), &res.AudioQuery); err != nil {
+			return nil, fmt.Errorf("テストの取りこぼし: %q の audio_query が JSON でない: %w", req.Text, err)
+		}
+	}
+	return res, nil
 }
 
 func (e *fakeEngine) calls() int {
@@ -312,10 +374,7 @@ func TestRun_キャッシュがあればエンジンを呼ばない(t *testing.T
 	if got.Synthesized != 0 || got.Cached != 3 {
 		t.Errorf("Synthesized = %d, Cached = %d, 期待値 0 / 3", got.Synthesized, got.Cached)
 	}
-	// パスも長さも 1 回目と同じであること。キャッシュを通ると尺が変わる、では困る。
-	//
-	// LineAudio はこのあとスライスの項目を持つ（→ issue #20）ので、== では比べられなくなる。
-	// 比べたいのは「1 回目とすべて同じか」なので、先に DeepEqual にしておく。
+	// パスも長さもモーラも 1 回目と同じであること。キャッシュを通ると尺が変わる、では困る。
 	for i := range got.Audio {
 		for j := range got.Audio[i] {
 			if !reflect.DeepEqual(got.Audio[i][j], first.Audio[i][j]) {
@@ -334,6 +393,8 @@ func TestRun_NoCacheならキャッシュを読まずに合成し直す(t *testi
 	engine.reqs = nil
 	store.gets = nil
 	store.puts = nil
+	store.queryGets = nil
+	store.queryPuts = nil
 
 	in := baseInput(s, engine, store)
 	in.NoCache = true
@@ -348,10 +409,218 @@ func TestRun_NoCacheならキャッシュを読まずに合成し直す(t *testi
 	if len(store.gets) != 0 {
 		t.Errorf("キャッシュを %d 回読んだ。NoCache のときは読まないこと: %v", len(store.gets), store.gets)
 	}
+	if len(store.queryGets) != 0 {
+		t.Errorf("AudioQuery を %d 回読んだ。NoCache のときは読まないこと: %v", len(store.queryGets), store.queryGets)
+	}
 	// 読まないだけで保存は続ける。ここを止めると props.json が指す wav が無くなる。
 	if len(store.puts) != 3 {
 		t.Errorf("Put の回数 = %d, 期待値 3（NoCache でも保存はする）", len(store.puts))
 	}
+	if len(store.queryPuts) != 3 {
+		t.Errorf("PutQuery の回数 = %d, 期待値 3（NoCache でも保存はする）", len(store.queryPuts))
+	}
+}
+
+// baseEngineWithQueries は 3 セリフすべてに testQueryJSON を返すエンジンを返す。
+func baseEngineWithQueries() *fakeEngine {
+	e := baseEngine()
+	e.rawQueries = map[string]string{
+		"1つめ": testQueryJSON,
+		"2つめ": testQueryJSON,
+		"3つめ": testQueryJSON,
+	}
+	return e
+}
+
+// assertMoras は合成結果のモーラが testQueryJSON から組み立てたものと一致することを確かめる。
+func assertMoras(t *testing.T, got *synth.Result) {
+	t.Helper()
+	for i := range got.Audio {
+		for j := range got.Audio[i] {
+			if !reflect.DeepEqual(got.Audio[i][j].Moras, wantTestQueryMoras) {
+				t.Errorf("Audio[%d][%d].Moras = %+v, 期待値 %+v",
+					i, j, got.Audio[i][j].Moras, wantTestQueryMoras)
+			}
+		}
+	}
+}
+
+// TestRun_モーラ情報を返しキャッシュへ保存する は issue #20 の本体。
+//
+// audio_query の応答にしか無いモーラ単位の長さを、合成のたびに捨てずに props へ渡し、
+// なおかつ控えておく。控えを取り損ねると、後から字幕のカラオケ表示や口パクを作るときに
+// 全音声の再合成が要る。
+func TestRun_モーラ情報を返しキャッシュへ保存する(t *testing.T) {
+	s := baseScript()
+	engine := baseEngineWithQueries()
+	store := newStore()
+
+	got := run(t, baseInput(s, engine, store))
+
+	assertMoras(t, got)
+
+	if len(store.queryPuts) != 3 {
+		t.Errorf("PutQuery の回数 = %d, 期待値 3", len(store.queryPuts))
+	}
+	for _, w := range []struct{ alias, text string }{
+		{"zundamon", "1つめ"}, {"metan", "2つめ"}, {"zundamon", "3つめ"},
+	} {
+		key := wantKey(t, s, w.alias, w.text)
+		saved, ok := store.queries[key]
+		if !ok {
+			t.Errorf("%q の AudioQuery が控えられていない", w.text)
+			continue
+		}
+		// エンジンが返した JSON をそのまま控えること。型に直して詰め直すと、
+		// エンジン独自のフィールドが控えから落ちる（→ tts.SynthesizeResult.RawAudioQuery）。
+		if string(saved) != testQueryJSON {
+			t.Errorf("%q の控えが元の JSON と違う:\n%s", w.text, saved)
+		}
+	}
+}
+
+// TestRun_キャッシュからモーラ情報を読み戻す は、2 回目以降の build でも
+// モーラが失われないことを確かめる。ここが抜けていると、初回だけモーラの載った
+// props.json ができ、キャッシュが効いた瞬間に静かに消える。
+func TestRun_キャッシュからモーラ情報を読み戻す(t *testing.T) {
+	s := baseScript()
+	engine := baseEngineWithQueries()
+	store := newStore()
+
+	run(t, baseInput(s, engine, store))
+	engine.reqs = nil
+
+	got := run(t, baseInput(s, engine, store))
+
+	if engine.calls() != 0 {
+		t.Errorf("エンジンの呼び出し回数 = %d, 期待値 0（キャッシュで済むはず）", engine.calls())
+	}
+	if got.Cached != 3 {
+		t.Errorf("Cached = %d, 期待値 3", got.Cached)
+	}
+	assertMoras(t, got)
+}
+
+// TestRun_モーラ情報の無いキャッシュは合成し直す は、この変更より前に作られた控え
+// （wav だけがある状態）を作り直すことを確かめる。
+//
+// 黙って作り直すのは、長さを測れない wav と同じ扱い。利用者の落ち度ではないし、
+// 作り直せる以上エラーにする理由が無い。issue #20 が「後付けコストが高い」と言っているのは
+// この 1 回ぶんの再合成のことで、それを今払う。
+func TestRun_モーラ情報の無いキャッシュは合成し直す(t *testing.T) {
+	s := baseScript()
+	engine := baseEngineWithQueries()
+	store := newStore()
+
+	// 3 セリフとも wav はあるが、1 セリフ目だけ AudioQuery の控えが無い。
+	for _, w := range []struct {
+		alias, text string
+		d           time.Duration
+	}{
+		{"zundamon", "1つめ", dur1},
+		{"metan", "2つめ", dur2},
+		{"zundamon", "3つめ", dur3},
+	} {
+		key := wantKey(t, s, w.alias, w.text)
+		store.data[key] = wavBytes(w.d)
+		if w.text != "1つめ" {
+			store.queries[key] = []byte(testQueryJSON)
+		}
+	}
+
+	got := run(t, baseInput(s, engine, store))
+
+	if engine.calls() != 1 {
+		t.Fatalf("エンジンの呼び出し回数 = %d, 期待値 1（控えの欠けていた 1 件だけ）", engine.calls())
+	}
+	if engine.reqs[0].Text != "1つめ" {
+		t.Errorf("合成し直されたセリフ = %q, 期待値 \"1つめ\"", engine.reqs[0].Text)
+	}
+	if got.Synthesized != 1 || got.Cached != 2 {
+		t.Errorf("Synthesized = %d, Cached = %d, 期待値 1 / 2", got.Synthesized, got.Cached)
+	}
+	assertMoras(t, got)
+	// 次の build で同じことを繰り返さないよう、控えも埋まっていること。
+	if _, ok := store.queries[wantKey(t, s, "zundamon", "1つめ")]; !ok {
+		t.Error("合成し直したのに AudioQuery が控えられていない")
+	}
+}
+
+// TestRun_壊れたクエリの控えは合成し直す は、JSON として読めない控えを掴んでも
+// 止まらずに作り直すことを確かめる。
+func TestRun_壊れたクエリの控えは合成し直す(t *testing.T) {
+	s := baseScript()
+	engine := baseEngineWithQueries()
+	store := newStore()
+
+	// 3 セリフとも控えは揃っているが、1 セリフ目の控えだけ中身が壊れている。
+	for _, w := range []struct {
+		alias, text string
+		d           time.Duration
+	}{
+		{"zundamon", "1つめ", dur1},
+		{"metan", "2つめ", dur2},
+		{"zundamon", "3つめ", dur3},
+	} {
+		key := wantKey(t, s, w.alias, w.text)
+		store.data[key] = wavBytes(w.d)
+		store.queries[key] = []byte(testQueryJSON)
+	}
+	broken := wantKey(t, s, "zundamon", "1つめ")
+	store.queries[broken] = []byte("これは JSON ではない")
+
+	got := run(t, baseInput(s, engine, store))
+
+	if got.Synthesized != 1 || got.Cached != 2 {
+		t.Errorf("Synthesized = %d, Cached = %d, 期待値 1 / 2", got.Synthesized, got.Cached)
+	}
+	assertMoras(t, got)
+}
+
+// TestRun_生のクエリが無ければ型から組み立てて控える は、RawAudioQuery を返さない
+// エンジンでも控えが空にならないことを確かめる。控えが空だと、次の build が
+// 「控えが無い」と判断して延々と合成し直すことになる。
+func TestRun_生のクエリが無ければ型から組み立てて控える(t *testing.T) {
+	s := baseScript()
+	engine := baseEngine() // rawQueries を持たない = RawAudioQuery は空
+	store := newStore()
+
+	run(t, baseInput(s, engine, store))
+	engine.reqs = nil
+
+	if len(store.queryPuts) != 3 {
+		t.Fatalf("PutQuery の回数 = %d, 期待値 3", len(store.queryPuts))
+	}
+	for key, saved := range store.queries {
+		var q tts.AudioQuery
+		if err := json.Unmarshal(saved, &q); err != nil {
+			t.Errorf("%s の控えが JSON として読めない: %v (%s)", key, err, saved)
+		}
+	}
+
+	// 控えが埋まっている以上、2 回目はエンジンを呼ばない。
+	got := run(t, baseInput(s, engine, store))
+	if engine.calls() != 0 {
+		t.Errorf("エンジンの呼び出し回数 = %d, 期待値 0（控えは埋まっているはず）", engine.calls())
+	}
+	if got.Cached != 3 {
+		t.Errorf("Cached = %d, 期待値 3", got.Cached)
+	}
+}
+
+// TestRun_クエリを保存できなければエラーになる は、控えの取りこぼしを黙って通さないことを確かめる。
+//
+// wav だけ保存できてクエリが落ちると、次の build がその wav を作り直すことになり、
+// 「キャッシュが効かない」という分かりにくい形で表に出る。
+func TestRun_クエリを保存できなければエラーになる(t *testing.T) {
+	store := newStore()
+	store.putQueryErr = errors.New("ディスクがいっぱいです")
+
+	_, err := synth.Run(context.Background(), baseInput(baseScript(), baseEngineWithQueries(), store))
+	if err == nil {
+		t.Fatal("エラーになるべきだが nil が返った")
+	}
+	assertContains(t, err, "scenes[0].lines[0]", "保存できませんでした", "ディスクがいっぱいです")
 }
 
 func TestRun_壊れたキャッシュは合成し直す(t *testing.T) {
@@ -362,8 +631,18 @@ func TestRun_壊れたキャッシュは合成し直す(t *testing.T) {
 	// 1 セリフ目だけ、長さを測れない中身にしておく（書き込みが途中で終わった wav のつもり）。
 	broken := wantKey(t, s, "zundamon", "1つめ")
 	store.data[broken] = []byte("これは wav ではない")
-	store.data[wantKey(t, s, "metan", "2つめ")] = wavBytes(dur2)
-	store.data[wantKey(t, s, "zundamon", "3つめ")] = wavBytes(dur3)
+	store.queries[broken] = []byte(testQueryJSON)
+	for _, w := range []struct {
+		alias, text string
+		d           time.Duration
+	}{
+		{"metan", "2つめ", dur2},
+		{"zundamon", "3つめ", dur3},
+	} {
+		key := wantKey(t, s, w.alias, w.text)
+		store.data[key] = wavBytes(w.d)
+		store.queries[key] = []byte(testQueryJSON)
+	}
 
 	got := run(t, baseInput(s, engine, store))
 
@@ -857,7 +1136,7 @@ func TestRun_並列に合成される(t *testing.T) {
 	if got.Synthesized != 3 {
 		t.Errorf("Synthesized = %d, 期待値 3", got.Synthesized)
 	}
-	
+
 	if elapsed >= 100*time.Millisecond {
 		t.Errorf("合成に時間がかかりすぎている（並列化されていない）: %v", elapsed)
 	}
