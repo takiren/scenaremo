@@ -6,14 +6,17 @@ meta:
   fps: 30
 
 # 話者のエイリアス定義。声を差し替えたくなったらここだけ直す
+# color は字幕の色。立ち絵が無い構成では、話者が変わったことは字幕の色でしか分からない
 speakers:
   zundamon:
     engine: voicevox
     styleId: 3
+    color: "#69C6A0"
   metan:
     engine: voicevox
     styleId: 2
     speedScale: 1.05
+    color: "#E86B8F"
 
 defaults:
   speaker: zundamon
@@ -25,7 +28,11 @@ scenes:
   - image: assets/01-title.png
     transition: fade
     lines:
-      - text: 今日はRemotionの話をするのだ
+      # 読み上げる文字列 (text) と、字幕に出す文字列 (caption) は分けられる。
+      # 聞いたことのない言葉ほど VOICEVOX は正しく読まないので text には読み仮名を書くが、
+      # それをそのまま字幕に出すと視聴者は綴りを受け取れず、その言葉を検索できない
+      - text: 今日はリモーションの話をするのだ
+        caption: 今日は Remotion の話をするのだ
       - speaker: metan
         text: |
           スライドショー形式の

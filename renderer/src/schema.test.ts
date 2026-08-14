@@ -50,6 +50,24 @@ describe('parseProps', () => {
 		expect(parsed.scenes[0]?.lines[0]?.startFrame).toBe(0);
 	});
 
+	it('字幕の項目 (caption / speakers) を読み取る', () => {
+		// どちらもこの項目より前に作られた props.json には無いため optional にしてある。
+		// 省略された場合の倒し方は Subtitle.test.ts が持つので、ここでは通ることだけを見る。
+		const parsed = parseProps({
+			...validProps(),
+			speakers: {zunda: {color: '#69C6A0'}},
+			scenes: [
+				{
+					...validProps().scenes[0],
+					lines: [{...validProps().scenes[0]!.lines[0]!, caption: 'Kubernetes の話なのだ'}],
+				},
+			],
+		});
+
+		expect(parsed.speakers?.zunda?.color).toBe('#69C6A0');
+		expect(parsed.scenes[0]?.lines[0]?.caption).toBe('Kubernetes の話なのだ');
+	});
+
 	it('scenes が空なら props.json の指定方法を案内する', () => {
 		// 実際にここへ来るのは、--props を渡し忘れて Root.tsx の既定値が流れ込んだときである。
 		// 「配列が短い」とだけ言われても、起動コマンドを直せばよいとは気づけない。

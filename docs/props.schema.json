@@ -23,6 +23,9 @@
     "meta": {
       "$ref": "#/$defs/meta"
     },
+    "speakers": {
+      "$ref": "#/$defs/speakers"
+    },
     "scenes": {
       "type": "array",
       "description": "シーンの並び。動画はこの順に再生される。台本の scenes と 1 対 1 で対応する。",
@@ -72,6 +75,27 @@
           "type": "integer",
           "description": "動画全体の総フレーム数。credits の分も含んだ最終的な尺で、calculateMetadata はこの値をそのまま採用する。台本にフレーム数を書かせないための要。TransitionSeries の尺の式（各シーケンスの尺の合計 − トランジションの尺の合計）と一致する。",
           "minimum": 1
+        }
+      }
+    },
+    "speakers": {
+      "type": "object",
+      "title": "話者",
+      "description": "話者エイリアスから、描画に要る属性への対応表。台本の speakers のうち、見た目に関わるものだけを写したもの。キーは lines[].speaker と同じ文字列で、台本に定義されたすべての話者が入る。\n\nセリフの側に色を持たせないのは、色が話者の属性であって行の属性ではないからである。同じ話者の行すべてに同じ色が並ぶと、片方だけ書き換わった props.json が作れてしまう。\n\nこのキー自体が無い props.json もある（この項目より前に生成されたもの）。読み手は無い場合を既定として扱うこと。",
+      "additionalProperties": {
+        "$ref": "#/$defs/speaker"
+      }
+    },
+    "speaker": {
+      "type": "object",
+      "title": "話者 1 人",
+      "description": "話者エイリアス 1 件分の、描画に要る属性。台本が何も指定していなければ空のオブジェクトになる（renderer 側の既定に倒す）。合成のパラメータ（styleId や speedScale）は載せない。音はもう作り終わっていて、renderer から使い道が無いためである。",
+      "additionalProperties": false,
+      "properties": {
+        "color": {
+          "type": "string",
+          "description": "この話者のセリフを字幕に出すときの文字色。台本の speakers[].color をそのまま渡す。台本が指定していなければキーごと出ない。\n\n既定色をここで埋めないのは、見た目の既定が renderer の持ち物だからである（CLI は音とタイムラインまでを担い、色を決めない）。",
+          "minLength": 1
         }
       }
     },
@@ -146,7 +170,12 @@
         },
         "text": {
           "type": "string",
-          "description": "読み上げた文章。台本に書かれたまま（改行も保持する）で、字幕はこれを使う。",
+          "description": "読み上げた文章。台本に書かれたまま（改行も保持する）。エンジンへ渡したのはこの文字列であり、字幕に出すのは caption のほうである。",
+          "minLength": 1
+        },
+        "caption": {
+          "type": "string",
+          "description": "字幕に出す文章。台本が lines[].caption を省略していれば text と同じ値が入る（フォールバックは CLI が解決済み）。改行は台本のまま保持する。\n\ntext と分かれているのは、聞いたことのない言葉ほどエンジンが正しく読まず、台本には読み仮名を書くことになるためである。その文字列をそのまま字幕に出すと、視聴者は綴りを受け取れず言葉を検索できない。\n\nrequired に入れていないのは、この項目より前に生成された props.json には無いためで、読み手は無ければ text へ倒すこと。CLI は常に出力する。",
           "minLength": 1
         },
         "audio": {

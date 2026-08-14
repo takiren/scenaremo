@@ -10,6 +10,14 @@
     "fps": 30,
     "durationInFrames": 450
   },
+  "speakers": {
+    "metan": {
+      "color": "#E86B8F"
+    },
+    "zundamon": {
+      "color": "#69C6A0"
+    }
+  },
   "scenes": [
     {
       "image": "assets/01-title.png",
@@ -22,14 +30,16 @@
       "lines": [
         {
           "speaker": "zundamon",
-          "text": "今日はRemotionの話をするのだ",
-          "audio": ".scenaremo/audio/f8891717969b050e7f0465a3434481af862c573a144e355bd06007dd8ed0d898.wav",
+          "text": "今日はリモーションの話をするのだ",
+          "caption": "今日は Remotion の話をするのだ",
+          "audio": ".scenaremo/audio/a6e99bf05860d8ec35884eba91128d435cd342bc712958e4aee8a1d8c5e944c4.wav",
           "startFrame": 0,
           "durationInFrames": 72
         },
         {
           "speaker": "metan",
           "text": "スライドショー形式の\n解説動画を作りますね\n",
+          "caption": "スライドショー形式の\n解説動画を作りますね\n",
           "audio": ".scenaremo/audio/b72332cfd40aafb5a7c2d68514c1ae89017ecfa75b7ffb2d8d6bb9086dde9f79.wav",
           "startFrame": 81,
           "durationInFrames": 94
@@ -48,6 +58,7 @@
         {
           "speaker": "zundamon",
           "text": "まず台本を書くのだ",
+          "caption": "まず台本を書くのだ",
           "audio": ".scenaremo/audio/970bf62d7be15063263c54de2a65a35f1266cb0972f78f3a292d603815190436.wav",
           "startFrame": 12,
           "durationInFrames": 57
@@ -55,6 +66,7 @@
         {
           "speaker": "zundamon",
           "text": "あとはCLIが音声を作ってくれるのだ",
+          "caption": "あとはCLIが音声を作ってくれるのだ",
           "audio": ".scenaremo/audio/61c4beec22f1716cd39fb2af83e129e97510007fe840d2cf644d6afb43b493c9.wav",
           "startFrame": 78,
           "durationInFrames": 83

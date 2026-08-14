@@ -48,8 +48,22 @@ export const moraSchema = z.object({
 export const lineSchema = z.object({
 	/** 話者エイリアス。台本で省略されていた場合は既定値が解決済みで入っている。 */
 	speaker: z.string().min(1),
-	/** 読み上げた文章。改行も台本のまま保持されている。字幕 (issue #21) はこれを使う。 */
+	/**
+	 * 読み上げた文章。改行も台本のまま保持されている。
+	 * エンジンへ渡ったのはこの文字列で、**字幕に出すのは caption のほう**である。
+	 */
 	text: z.string().min(1),
+	/**
+	 * 字幕に出す文章。台本が caption を省略していれば text と同じ値が入っている。
+	 *
+	 * text と分かれているのは、聞いたことのない言葉ほどエンジンが正しく読まず、台本には
+	 * 読み仮名を書くことになるためである。それをそのまま字幕に出すと視聴者は綴りを受け取れず、
+	 * 言葉を検索できない（→ issue #21）。
+	 *
+	 * この変更より前に作られた props.json には存在しないため optional にしている。
+	 * 無ければ text へ倒すこと（→ captionOf）。
+	 */
+	caption: z.string().min(1).optional(),
 	/** 合成された wav のパス。動画ディレクトリからの相対で、`staticFile()` にそのまま渡せる。 */
 	audio: z.string().min(1),
 	/**
@@ -106,6 +120,16 @@ export const creditsSchema = z.object({
 	entries: z.array(creditEntrySchema),
 });
 
+export const speakerSchema = z.object({
+	/**
+	 * 字幕の文字色。台本が指定していなければ入っていない（既定色は renderer 側が決める）。
+	 *
+	 * 色を持つのが話者であって行ではないのは、それが話者の属性だからである。
+	 * セリフごとに色を持たせると、同じ話者の行で色が食い違った props.json を作れてしまう。
+	 */
+	color: z.string().min(1).optional(),
+});
+
 export const metaSchema = z.object({
 	title: z.string().min(1),
 	aspect: z.enum(['16:9', '9:16']),
@@ -122,6 +146,13 @@ export const propsSchema = z.object({
 	$generatedBy: z.string().optional(),
 	$note: z.string().optional(),
 	meta: metaSchema,
+	/**
+	 * 話者エイリアスから、描画に要る属性への対応表。キーは lines[].speaker と同じ文字列。
+	 *
+	 * caption と同じ理由で optional にしている（この項目より前に作られた props.json には無い）。
+	 * 引けなかった話者は既定の見た目に倒すこと。
+	 */
+	speakers: z.record(z.string(), speakerSchema).optional(),
 	scenes: z
 		.array(sceneSchema)
 		// props.json が渡されていないときは既定値の空配列がここへ来る。
@@ -134,9 +165,20 @@ export type Transition = z.infer<typeof transitionSchema>;
 export type Mora = z.infer<typeof moraSchema>;
 export type Line = z.infer<typeof lineSchema>;
 export type Scene = z.infer<typeof sceneSchema>;
+export type Speaker = z.infer<typeof speakerSchema>;
+export type Speakers = Record<string, Speaker>;
 
 /** シーンコンポーネントが受け取る props。 */
 export type SceneProps = {scene: Scene};
+
+/**
+ * 字幕に出す文章を返す。caption が無ければ text へ倒す。
+ *
+ * CLI は常に caption を埋めて渡してくるので、ここが効くのはこの項目より前に作られた
+ * props.json を読んだときだけである。フォールバックを 1 箇所に閉じ込めておくと、
+ * 「字幕に何が出るのか」を追う先がここだけで済む。
+ */
+export const captionOf = (line: Line): string => line.caption ?? line.text;
 
 export type CreditEntry = z.infer<typeof creditEntrySchema>;
 export type Credits = z.infer<typeof creditsSchema>;
