@@ -140,7 +140,11 @@ speakers:
     pitchScale: 0.0      # 音高 (-0.15 〜 0.15)
     intonationScale: 1.0 # 抑揚 (0.0 〜 2.0)
     volumeScale: 1.0     # 音量 (0.0 〜 2.0)
+    color: "#69C6A0"     # 字幕の色 (#RGB または #RRGGBB / 省略時は renderer の既定色)
 ```
+
+> [!NOTE]
+> `color` だけが見た目の設定で、他は合成のパラメータです。字幕の色を変えても音声のキャッシュは無効になりません（キャッシュキーは合成パラメータから作られるため）。
 
 #### `scenes` のパラメータ
 ```yaml
@@ -153,7 +157,17 @@ scenes:
     lines:                 # [必須] セリフのリスト
       - speaker: zundamon
         text: こんにちはのだ
+      - text: クーベルネティスの話をするのだ      # [必須] 読み上げる文字列
+        caption: Kubernetes の話をするのだ       # 字幕に出す文字列 (省略時は text)
 ```
+
+#### 読み上げる文字列 (`text`) と、字幕に出す文字列 (`caption`)
+
+聞いたことのない言葉ほど VOICEVOX は正しく読まないため、`text` には読み仮名を書くことになります。
+ところがその文字列をそのまま字幕に出すと、視聴者は綴りを受け取れず、**その言葉を検索できません**。
+`caption` はこの 2 つを分けるための項目で、省略時は `text` がそのまま字幕になります（フォールバックは CLI が解決し、`props.json` には常に埋まった値が載ります）。
+
+`caption` は合成には一切影響しません。エンジンへ渡るのも音声キャッシュのキーになるのも `text` だけなので、字幕の言い回しだけを直しても音声は作り直されません。
 
 ---
 
@@ -173,6 +187,9 @@ scenes:
     "fps": 30,
     "durationInFrames": 450
   },
+  "speakers": {
+    "zundamon": {"color": "#69C6A0"}
+  },
   "scenes": [...],
   "credits": {
     "durationInFrames": 90,
@@ -181,11 +198,14 @@ scenes:
 }
 ```
 
+- `speakers`: 話者エイリアスから、**描画に要る属性**への対応表。台本に定義されたすべての話者が入ります。合成のパラメータ（`styleId` など）は載りません。音はもう作り終わっており、renderer から使い道が無いためです。
+
 #### `lines` 要素（確定済みデータ）
 ```json
 {
   "speaker": "zundamon",
-  "text": "こんにちはのだ",
+  "text": "クーベルネティスの話をするのだ",
+  "caption": "Kubernetes の話をするのだ",
   "audio": ".scenaremo/audio/a1b2c3d4.wav",
   "startFrame": 12,
   "durationInFrames": 75
@@ -193,6 +213,10 @@ scenes:
 ```
 - `audio`: CLI が生成・キャッシュした WAV ファイルへの相対パス (`videos/<id>/` 基準)。
 - `startFrame`: トランジション（繋ぎ）が明けた直後のフレームインデックス。
+- `caption`: 字幕に出す文字列。台本が省略していれば `text` と同じ値が入ります（フォールバックは CLI が解決済み）。
+
+> [!NOTE]
+> `caption` と `speakers` は、この項目より前に生成された `props.json` には存在しないため `required` に入っていません（項目を足すだけの後方互換な変更なので `version` は上げていません）。renderer 側は `caption` が無ければ `text` へ、`speakers` から引けなければ既定の見た目へ倒します。
 
 ---
 
