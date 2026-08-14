@@ -4,7 +4,8 @@ import {none} from '@remotion/transitions/none';
 import React from 'react';
 import {AbsoluteFill} from 'remotion';
 import {Credits} from './Credits';
-import {Scene} from './Scene';
+import {SceneAudio} from './SceneAudio';
+import {resolveSceneComponent} from './scenes/registry';
 import type {Props, Transition as TransitionData} from './schema';
 
 /**
@@ -46,36 +47,40 @@ export const Slideshow: React.FC<Props> = ({scenes, credits}) => {
 	return (
 		<AbsoluteFill style={{backgroundColor: 'black'}}>
 			<TransitionSeries>
-				{scenes.map((scene, i) => (
-					// TransitionSeries は Transition を Sequence の間に挟む API なので、
-					// シーン 1 つを「繋ぎ + シーケンス」の組で表す。Fragment は TransitionSeries 側で
-					// 平らに均されるため、子の並びとしては両者が交互に現れる形になる。
-					// 台本の並び順がシーンの同一性そのものなので、添字を key にしてよい。
-					<React.Fragment key={i}>
-						{/*
-						 * 繋ぎが 0 フレームなら Transition を置かない。先頭のシーンは繋ぐ相手が
-						 * いないので必ず 0 で届き、TransitionSeries も先頭に Transition を置けないため、
-						 * この 1 つの条件で「繋ぎ無し」と「先頭は繋げない」の両方を満たせる。
-						 */}
-						{scene.transition.durationInFrames > 0 ? (
-							<TransitionSeries.Transition
-								presentation={presentationFor(scene.transition.type)}
-								// 申告されたフレーム数をそのまま尺にする timing でなければならない。
-								// springTiming のように設定から尺が決まるものを使うと、
-								// CLI が確定させた総尺と食い違って音がずれる。
-								timing={linearTiming({
-									durationInFrames: scene.transition.durationInFrames,
-								})}
-							/>
-						) : null}
-						<TransitionSeries.Sequence
-							durationInFrames={scene.durationInFrames}
-							name={scene.image}
-						>
-							<Scene scene={scene} />
-						</TransitionSeries.Sequence>
-					</React.Fragment>
-				))}
+				{scenes.map((scene, i) => {
+					const SceneComponent = resolveSceneComponent(scene.component);
+					return (
+						// TransitionSeries は Transition を Sequence の間に挟む API なので、
+						// シーン 1 つを「繋ぎ + シーケンス」の組で表す。Fragment は TransitionSeries 側で
+						// 平らに均されるため、子の並びとしては両者が交互に現れる形になる。
+						// 台本の並び順がシーンの同一性そのものなので、添字を key にしてよい。
+						<React.Fragment key={i}>
+							{/*
+							 * 繋ぎが 0 フレームなら Transition を置かない。先頭のシーンは繋ぐ相手が
+							 * いないので必ず 0 で届き、TransitionSeries も先頭に Transition を置けないため、
+							 * この 1 つの条件で「繋ぎ無し」と「先頭は繋げない」の両方を満たせる。
+							 */}
+							{scene.transition.durationInFrames > 0 ? (
+								<TransitionSeries.Transition
+									presentation={presentationFor(scene.transition.type)}
+									// 申告されたフレーム数をそのまま尺にする timing でなければならない。
+									// springTiming のように設定から尺が決まるものを使うと、
+									// CLI が確定させた総尺と食い違って音がずれる。
+									timing={linearTiming({
+										durationInFrames: scene.transition.durationInFrames,
+									})}
+								/>
+							) : null}
+							<TransitionSeries.Sequence
+								durationInFrames={scene.durationInFrames}
+								name={scene.image}
+							>
+								<SceneComponent scene={scene} />
+								<SceneAudio scene={scene} />
+							</TransitionSeries.Sequence>
+						</React.Fragment>
+					);
+				})}
 				{/*
 				 * クレジットは最後のシーンの直後に置く。位置は props.json の契約で固定されていて
 				 * （開始位置を持たないのはそのため）、renderer 側に置き場所の判断は無い。

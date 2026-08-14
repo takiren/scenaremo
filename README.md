@@ -78,7 +78,10 @@ scenaremo/
 │       ├── index.ts        # registerRoot
 │       ├── Root.tsx        # Composition 定義。props.json から尺と解像度を決める
 │       ├── Slideshow.tsx   # メインコンポジション
-│       ├── Scene.tsx       # 画像 + トランジション
+│       ├── scenes/         # シーンコンポーネントとレジストリ
+│       │   ├── registry.ts
+│       │   └── DefaultScene.tsx
+│       ├── SceneAudio.tsx  # セリフ音声を鳴らす共通レイヤー
 │       ├── Credits.tsx     # 動画末尾のクレジットシーン
 │       ├── Subtitle.tsx    # 字幕
 │       └── schema.ts       # zod スキーマ (docs/props.schema.json に追従)

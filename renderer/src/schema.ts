@@ -108,6 +108,10 @@ export const propsSchema = z.object({
 export type Transition = z.infer<typeof transitionSchema>;
 export type Line = z.infer<typeof lineSchema>;
 export type Scene = z.infer<typeof sceneSchema>;
+
+/** シーンコンポーネントが受け取る props。 */
+export type SceneProps = {scene: Scene};
+
 export type CreditEntry = z.infer<typeof creditEntrySchema>;
 export type Credits = z.infer<typeof creditsSchema>;
 export type Meta = z.infer<typeof metaSchema>;
