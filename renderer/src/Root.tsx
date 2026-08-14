@@ -2,6 +2,7 @@ import React from 'react';
 import {Composition} from 'remotion';
 import {Slideshow} from './Slideshow';
 import {parseProps, SUPPORTED_VERSION, type Props} from './schema';
+import {resolveSceneComponent} from './scenes/registry';
 
 /**
  * props.json が渡されなかったときに使われる値。
@@ -43,6 +44,19 @@ export const RemotionRoot: React.FC = () => {
 			 */
 			calculateMetadata={({props}) => {
 				const data = parseProps(props);
+
+				// 描画が始まる前にコンポーネントの解決を試し、未知の名前があればエラーにする。
+				// 返り値はここで捨ててよい。
+				data.scenes.forEach((scene, i) => {
+					try {
+						resolveSceneComponent(scene.component);
+					} catch (e) {
+						if (e instanceof Error) {
+							throw new Error(`シーン ${i + 1} (${scene.image}): ${e.message}`);
+						}
+						throw e;
+					}
+				});
 
 				return {
 					width: data.meta.width,

@@ -1,27 +1,19 @@
 import React from 'react';
-import {AbsoluteFill, Html5Audio, Img, Sequence, staticFile} from 'remotion';
-import type {Scene as SceneData} from './schema';
+import {Html5Audio, Sequence, staticFile} from 'remotion';
+import type {SceneProps} from './schema';
 
 /**
- * シーン 1 つ分の描画。既定の見た目であり、**あなたが書き換える層**。
- *
- * 画像も音声もパスは動画ディレクトリからの相対で入っている。`--public-dir` に動画ディレクトリを
- * 渡して起動するので、そのまま `staticFile()` に通せる（→ README「設計方針 7」）。
- *
- * シーン名で描画を切り替える registry は issue #34、繋ぎの演出は issue #10、
- * 字幕は issue #21 で入る。ここは今のところ「画像を 1 枚敷き、セリフを鳴らす」ことを担う。
+ * セリフ音声を鳴らす共通レイヤー。
+ * シーンコンポーネントから分離されているため、利用者が自作コンポーネントを書いても
+ * 音声再生の処理を気にせずに済む。
  *
  * 音声に remotion の `Audio` ではなく `Html5Audio` を使うのは、4.0.5xx で `Audio` の名が
  * `@remotion/media` の新しい実装へ移り、こちらが非推奨の別名になったため。
  * 中身は同じもので、依存を増やさずに済む。
  */
-export const Scene: React.FC<{scene: SceneData}> = ({scene}) => {
+export const SceneAudio: React.FC<SceneProps> = ({scene}) => {
 	return (
-		<AbsoluteFill style={{backgroundColor: 'black'}}>
-			<Img
-				src={staticFile(scene.image)}
-				style={{width: '100%', height: '100%', objectFit: 'cover'}}
-			/>
+		<>
 			{scene.lines.map((line, i) => (
 				<Sequence
 					// 台本の並び順がセリフの同一性そのものなので、添字を key にしてよい。
@@ -44,6 +36,6 @@ export const Scene: React.FC<{scene: SceneData}> = ({scene}) => {
 					<Html5Audio src={staticFile(line.audio)} />
 				</Sequence>
 			))}
-		</AbsoluteFill>
+		</>
 	);
 };
