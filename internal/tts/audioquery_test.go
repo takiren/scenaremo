@@ -54,6 +54,39 @@ func TestParams_IsZero(t *testing.T) {
 	}
 }
 
+func TestParams_Fingerprint(t *testing.T) {
+	if got := (Params{}).Fingerprint(); (Params{SpeedScale: nil}).Fingerprint() != got {
+		t.Errorf("空の Params の Fingerprint が安定していない")
+	}
+
+	nilFP := (Params{SpeedScale: nil}).Fingerprint()
+	zeroFP := (Params{SpeedScale: new(float64(0))}).Fingerprint()
+	if nilFP == zeroFP {
+		t.Errorf("nil と 0 の Fingerprint が同じ: %q", nilFP)
+	}
+
+	// 合成結果を変える全フィールドが Fingerprint に反映されていることを確認する（#65）。
+	fields := []struct {
+		name   string
+		params Params
+	}{
+		{"SpeedScale", Params{SpeedScale: new(1.1)}},
+		{"PitchScale", Params{PitchScale: new(1.1)}},
+		{"IntonationScale", Params{IntonationScale: new(1.1)}},
+		{"VolumeScale", Params{VolumeScale: new(1.1)}},
+		{"PrePhonemeLength", Params{PrePhonemeLength: new(1.1)}},
+		{"PostPhonemeLength", Params{PostPhonemeLength: new(1.1)}},
+	}
+	base := Params{}.Fingerprint()
+	for _, f := range fields {
+		t.Run(f.name, func(t *testing.T) {
+			if got := f.params.Fingerprint(); got == base {
+				t.Errorf("%s が Fingerprint に反映されていない", f.name)
+			}
+		})
+	}
+}
+
 func TestAudioQuery_JSONの往復(t *testing.T) {
 	var q AudioQuery
 	if err := json.Unmarshal([]byte(sampleAudioQueryJSON), &q); err != nil {

@@ -132,12 +132,28 @@ func (m Mora) Duration() float64 {
 // Params は台本側から AudioQuery を上書きするための値。
 // nil のフィールドはエンジンが返した既定値をそのまま使う。
 type Params struct {
-	SpeedScale        *float64
-	PitchScale        *float64
-	IntonationScale   *float64
-	VolumeScale       *float64
-	PrePhonemeLength  *float64
-	PostPhonemeLength *float64
+	SpeedScale        *float64 `json:"speedScale"`
+	PitchScale        *float64 `json:"pitchScale"`
+	IntonationScale   *float64 `json:"intonationScale"`
+	VolumeScale       *float64 `json:"volumeScale"`
+	PrePhonemeLength  *float64 `json:"prePhonemeLength"`
+	PostPhonemeLength *float64 `json:"postPhonemeLength"`
+}
+
+// Fingerprint は合成結果を決めるすべてのフィールドを決まった順で書き出す。
+// キャッシュキーの材料として使う。
+//
+// json.Marshal は構造体のフィールド宣言順を保つので順序は安定し、nil と 0 も
+// null と 0 として区別される。Params にフィールドを足せばこの出力にも自動的に
+// 反映されるため、フィールドを足したのにキャッシュキー側の更新を忘れる、という
+// 漏れが構造的に起きなくなる。
+func (p Params) Fingerprint() string {
+	b, err := json.Marshal(p)
+	if err != nil {
+		// フィールドはすべて *float64 なので実際には起こらない。
+		panic(fmt.Sprintf("tts: Params の直列化に失敗しました: %v", err))
+	}
+	return string(b)
 }
 
 // overrides は上書き対象を AudioQuery の JSON キー名で返す。指定の無いものは含まない。

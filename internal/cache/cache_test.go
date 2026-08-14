@@ -91,6 +91,32 @@ func TestKey_Sensitivity(t *testing.T) {
 			},
 			eng: tts.EngineVoicevox,
 		},
+		{
+			// #65: prePhonemeLength / postPhonemeLength は wav の前後の無音長を変えるので、
+			// キャッシュキーに反映されていないと衝突する。
+			name: "PrePhonemeLengthが違う",
+			req: tts.SynthesizeRequest{
+				Text:    "こんにちは",
+				StyleID: 1,
+				Params: tts.Params{
+					SpeedScale:       new(1.0),
+					PrePhonemeLength: new(0.5),
+				},
+			},
+			eng: tts.EngineVoicevox,
+		},
+		{
+			name: "PostPhonemeLengthが違う",
+			req: tts.SynthesizeRequest{
+				Text:    "こんにちは",
+				StyleID: 1,
+				Params: tts.Params{
+					SpeedScale:        new(1.0),
+					PostPhonemeLength: new(0.5),
+				},
+			},
+			eng: tts.EngineVoicevox,
+		},
 	}
 
 	for _, tt := range tests {
