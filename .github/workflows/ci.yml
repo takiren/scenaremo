@@ -67,8 +67,12 @@ jobs:
       - name: Build
         run: go build -v ./...
 
+      # -race を付けるのは、合成が --parallel で並列に動くようになったため。
+      # 競合は「たまに落ちる」形で現れるので、素の go test では踏むまで気づけない。
+      # 実際 fakeStore の concurrent map writes は、無関係な PR の CI で初めて表に出た。
+      # 手元の実測で 2.6s → 3.6s なので、遅さを理由に外す段階ではない。
       - name: Test
-        run: go test -v ./...
+        run: go test -v -race ./...
 
   renderer:
     name: Renderer Typecheck
