@@ -7,7 +7,6 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
-	"strconv"
 
 	"github.com/takiren/scenaremo/internal/tts"
 )
@@ -113,23 +112,17 @@ func (s *Store) put(name string, data []byte) error {
 	return nil
 }
 
-func formatFloatPtr(v *float64) string {
-	if v == nil {
-		return "<nil>"
-	}
-	return strconv.FormatFloat(*v, 'f', -1, 64)
-}
-
 // Key は合成パラメータから決定論的なキャッシュキー（SHA-256の16進数文字列表現）を生成する。
+//
+// Params は Fingerprint() で丸ごとキーの材料にする。フィールドを個別に並べると、
+// 合成結果を変えるフィールドを Params に足したときにここへ書き足すのを忘れやすく、
+// 忘れても気づけない（衝突したキャッシュが別パラメータの wav を返すだけ）ため。
 func Key(engine tts.EngineKind, req tts.SynthesizeRequest) string {
-	str := fmt.Sprintf("%s|%d|%s|%s|%s|%s|%s",
+	str := fmt.Sprintf("%s|%d|%s|%s",
 		engine,
 		req.StyleID,
 		req.Text,
-		formatFloatPtr(req.Params.SpeedScale),
-		formatFloatPtr(req.Params.PitchScale),
-		formatFloatPtr(req.Params.IntonationScale),
-		formatFloatPtr(req.Params.VolumeScale),
+		req.Params.Fingerprint(),
 	)
 	hash := sha256.Sum256([]byte(str))
 	return hex.EncodeToString(hash[:])
