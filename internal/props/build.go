@@ -59,12 +59,27 @@ var creditEngineNames = map[script.Engine]string{
 	script.EngineVoicevox: "VOICEVOX",
 }
 
+// MoraTiming は合成結果から受け取るモーラ 1 つ分の実時間。
+// tts パッケージの同名型と重複するが、これはエンジン実装 (tts) へ依存させずに契約を保つため。
+type MoraTiming struct {
+	// Text はカナ表記。
+	Text string
+	// Vowel は母音の音素。
+	Vowel string
+	// Offset はそのセリフの音声の先頭（無音の prePhonemeLength を含む）からこのモーラが鳴り始めるまでの時間。
+	Offset time.Duration
+	// Duration はこのモーラの発話長。
+	Duration time.Duration
+}
+
 // LineAudio はセリフ1つ分の合成結果。
 type LineAudio struct {
 	// Path は props.json に載せる wav のパス。動画ディレクトリからの相対で / 区切り。
 	Path string
 	// Duration は wav の実測長。フレーム数はここから決まる。
 	Duration time.Duration
+	// Moras はモーラごとのタイミング情報。エンジンが返さなければ空。
+	Moras []MoraTiming
 }
 
 // SpeakerCredit は話者エイリアス1件のクレジット情報。
@@ -201,6 +216,47 @@ func transitionMs(t script.Transition) int {
 	return DefaultTransitionMs
 }
 
+// frameMoras は実時間のモーラ情報をフレーム番号へ直す。
+//
+// 1. 境界での計算:
+// 個々の長さをフレームへ丸めて足し込むのではなく、実時間のまま累積した「開始位置」と「終了位置」を
+// それぞれフレームへ直してから、その差を長さとする。こうすることで隣り合うモーラが隙間なく繋がる。
+//
+// 2. 整数のナノ秒での切り上げ:
+// 0.3秒 × 30fps のような値を float64 の秒で計算すると 9.000000000000002 になり、
+// これを math.Ceil すると 10 に切り上がってしまう事故が起きる。
+// そのため time.Duration (int64) のまま整数演算で切り上げる。
+//
+// 3. 尺のクランプ:
+// wav の実測長はエンジンの出力結果であり、クエリの予測時間とはわずかにずれうる。
+// props.json は Sequence に載せる以上「セリフの尺の中に収まっている」必要があるため、はみ出る分は詰める。
+func frameMoras(timings []MoraTiming, fps int, lineDurFrames int) []Mora {
+	if len(timings) == 0 {
+		return nil
+	}
+	var moras []Mora
+	for _, m := range timings {
+		start := (int64(m.Offset)*int64(fps) + int64(time.Second) - 1) / int64(time.Second)
+		end := (int64(m.Offset+m.Duration)*int64(fps) + int64(time.Second) - 1) / int64(time.Second)
+		startFrame := int(start)
+		durationInFrames := int(end - start)
+
+		if startFrame >= lineDurFrames {
+			continue
+		}
+		if startFrame+durationInFrames > lineDurFrames {
+			durationInFrames = lineDurFrames - startFrame
+		}
+		moras = append(moras, Mora{
+			Text:             m.Text,
+			Vowel:            m.Vowel,
+			StartFrame:       startFrame,
+			DurationInFrames: durationInFrames,
+		})
+	}
+	return moras
+}
+
 // buildScenes は台本・合成結果・タイムラインを突き合わせて scenes を組み立てる。
 func buildScenes(s *script.Script, audio [][]LineAudio, tl timeline.Timeline) ([]Scene, error) {
 	scenes := make([]Scene, 0, len(s.Scenes))
@@ -217,12 +273,16 @@ func buildScenes(s *script.Script, audio [][]LineAudio, tl timeline.Timeline) ([
 			if err != nil {
 				return nil, fmt.Errorf("scenes[%d].lines[%d].audio: %w", i, j, err)
 			}
+			lineDurFrames := tl.Scenes[i].Lines[j].DurationFrames
+			moras := frameMoras(audio[i][j].Moras, s.Meta.FPS, lineDurFrames)
+
 			lines = append(lines, Line{
 				Speaker:          line.Speaker,
 				Text:             line.Text,
 				Audio:            audioPath,
 				StartFrame:       tl.Scenes[i].Lines[j].StartFrame,
-				DurationInFrames: tl.Scenes[i].Lines[j].DurationFrames,
+				DurationInFrames: lineDurFrames,
+				Moras:            moras,
 			})
 		}
 

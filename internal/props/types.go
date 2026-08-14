@@ -146,6 +146,27 @@ type Line struct {
 
 	// DurationInFrames はこのセリフに与えられたフレーム数。音声の実測長を切り上げた値。
 	DurationInFrames int `json:"durationInFrames"`
+
+	// Moras はモーラごとのタイミング情報。
+	// 字幕のカラオケ表示や口パクの実装に使う（→ issue #20）。
+	// エンジンがモーラ情報を返さなかった場合（アクセント句が無い場合など）は空になり、JSON には出力されない。
+	Moras []Mora `json:"moras,omitempty"`
+}
+
+// Mora は props.json に載るモーラ 1 つ。
+type Mora struct {
+	// Text はカナ表記（「コ」「、」など）。
+	Text string `json:"text"`
+	// Vowel は母音の音素 (a/i/u/e/o/N/pau/cl など)。
+	Vowel string `json:"vowel"`
+	// StartFrame はこのセリフの音声が鳴り始めてから、このモーラが鳴り始めるまでのフレーム数。
+	// このセリフの先頭からの相対位置であり、シーンや動画の先頭からではない（このリポジトリの座標系ルール）。
+	// 丸めは境界ごとの切り上げで行われ、隣り合うモーラが隙間なく連続するようになっている。
+	StartFrame int `json:"startFrame"`
+	// DurationInFrames はこのモーラに与えられたフレーム数。
+	// 1 フレームに満たない短いモーラは 0 になる。これを無理にずらして 1 以上にすると、
+	// ずれが後続のモーラへ積み上がっていき全体の尺と合わなくなるため、0 のままにしている。
+	DurationInFrames int `json:"durationInFrames"`
 }
 
 // Credits は使用した音声ライブラリのクレジット表記。

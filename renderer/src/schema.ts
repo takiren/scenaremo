@@ -27,6 +27,24 @@ export const transitionSchema = z.object({
 	durationInFrames: z.number().int().min(0),
 });
 
+export const moraSchema = z.object({
+	/** カナ表記（「コ」「、」など）。 */
+	text: z.string().min(1),
+	/** 母音の音素 (a/i/u/e/o/N/pau/cl など)。 */
+	vowel: z.string().min(1),
+	/**
+	 * このセリフの音声が鳴り始めてから、このモーラが鳴り始めるまでのフレーム数。
+	 * 丸めは境界ごとの切り上げで行われ、隣り合うモーラが隙間なく連続するようになっている。
+	 */
+	startFrame: z.number().int().min(0),
+	/**
+	 * このモーラに与えられたフレーム数。
+	 * 1 フレームに満たない短いモーラは 0 になる。これを無理にずらして 1 以上にすると、
+	 * ずれが後続のモーラへ積み上がっていき全体の尺と合わなくなるため、0 のままにしている。
+	 */
+	durationInFrames: z.number().int().min(0),
+});
+
 export const lineSchema = z.object({
 	/** 話者エイリアス。台本で省略されていた場合は既定値が解決済みで入っている。 */
 	speaker: z.string().min(1),
@@ -41,6 +59,13 @@ export const lineSchema = z.object({
 	startFrame: z.number().int().min(0),
 	/** このセリフに与えられたフレーム数。音声の実測長を切り上げた値。 */
 	durationInFrames: z.number().int().min(1),
+	/**
+	 * モーラごとのタイミング情報。字幕のカラオケ表示や口パクの実装に使う。
+	 *
+	 * この変更より前に作られた props.json には存在しないため optional にしている。
+	 * 項目を足すだけの後方互換な変更であり、契約のバージョンは上げていないため。
+	 */
+	moras: z.array(moraSchema).optional(),
 });
 
 export const sceneSchema = z.object({
@@ -106,6 +131,7 @@ export const propsSchema = z.object({
 });
 
 export type Transition = z.infer<typeof transitionSchema>;
+export type Mora = z.infer<typeof moraSchema>;
 export type Line = z.infer<typeof lineSchema>;
 export type Scene = z.infer<typeof sceneSchema>;
 

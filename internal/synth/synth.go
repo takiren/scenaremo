@@ -11,6 +11,7 @@ package synth
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"path/filepath"
@@ -44,6 +45,11 @@ type Store interface {
 	Get(key string) ([]byte, error)
 	// Put は wav を保存する。
 	Put(key string, wav []byte) error
+	// GetQuery はキーに対応する AudioQuery の JSON を返す。無ければ os.ErrNotExist をラップしたエラーを返す。
+	// モーラ情報をキャッシュヒット時にも復元するために、wav と同じ寿命で保存して控えておく。
+	GetQuery(key string) ([]byte, error)
+	// PutQuery は AudioQuery の JSON を保存する。
+	PutQuery(key string, query []byte) error
 }
 
 // EngineResolver は話者のエンジン種別から合成エンジンを引く。
@@ -264,7 +270,7 @@ func Run(ctx context.Context, in Input) (*Result, error) {
 				key := cache.Key(kind, req)
 
 				reporter.LineStart(jb.index, jb.line.Speaker, jb.line.Text)
-				d, cached, err := prepareWAV(ctx, in, engine, key, req)
+				d, moras, cached, err := prepareWAV(ctx, in, engine, key, req)
 				if err != nil {
 					mu.Lock()
 					if firstErr == nil {
@@ -285,6 +291,7 @@ func Run(ctx context.Context, in Input) (*Result, error) {
 				res.Audio[jb.sceneIndex][jb.lineIndex] = props.LineAudio{
 					Path:     dir + "/" + key + ".wav",
 					Duration: d,
+					Moras:    moras,
 				}
 				mu.Unlock()
 			}
@@ -302,41 +309,96 @@ func Run(ctx context.Context, in Input) (*Result, error) {
 	return res, nil
 }
 
+// moraTimings はエンジンの型 (tts) を CLI 契約の型 (props) へ詰め替える。
+// tts パッケージの型に直接依存させると、props.json の契約がエンジンの都合で変わってしまうため。
+func moraTimings(q tts.AudioQuery) []props.MoraTiming {
+	timings := q.MoraTimings()
+	var moras []props.MoraTiming
+	for _, t := range timings {
+		moras = append(moras, props.MoraTiming{
+			Text:     t.Text,
+			Vowel:    t.Vowel,
+			Offset:   t.Offset,
+			Duration: t.Duration,
+		})
+	}
+	return moras
+}
+
+// cachedLine はキャッシュから wav と AudioQuery を読み戻せるか試す。
+//
+// 読めた wav が測れなかった場合や、AudioQuery の JSON が読めない・解釈できない場合も、黙って合成し直す。
+// 長さが測れない wav などの不完全なキャッシュはタイムラインを壊すうえ、一度紛れ込むと build のたびに同じ失敗を繰り返す。
+// クエリが欠けている場合も、一部だけモーラが消える事故を防ぐため、壊れた wav と同じに扱って作り直す。
+// 途中で電源が落ちた等で壊れるのは利用者の落ち度ではないので、作り直せる限りエラーにはしない。
+//
+// この変更より前に作られたキャッシュはクエリの控えを持たないためここで失敗扱いになり、一度だけ合成し直される
+// （それが issue #20 が後付けコストが高いと言っている当のコストであり、今払う）。
+func cachedLine(in Input, key string) (time.Duration, []props.MoraTiming, bool) {
+	if in.NoCache {
+		return 0, nil, false
+	}
+	wav, err := in.Store.Get(key)
+	if err != nil {
+		return 0, nil, false
+	}
+	queryJSON, err := in.Store.GetQuery(key)
+	if err != nil {
+		return 0, nil, false
+	}
+	info, err := audio.MeasureBytes(wav)
+	if err != nil {
+		return 0, nil, false
+	}
+	var query tts.AudioQuery
+	if err := json.Unmarshal(queryJSON, &query); err != nil {
+		return 0, nil, false
+	}
+	return info.Duration, moraTimings(query), true
+}
+
 // prepareWAV はキャッシュを見て、無ければ合成して wav を用意し、その実測長を返す。
 // 戻り値の cached は「エンジンを呼ばずに済んだ」ことを表す。
-func prepareWAV(ctx context.Context, in Input, engine tts.Engine, key string, req tts.SynthesizeRequest) (time.Duration, bool, error) {
-	if !in.NoCache {
-		if wav, err := in.Store.Get(key); err == nil {
-			// 読めた wav が測れなかった場合も、黙って合成し直す。
-			// 長さが測れない wav はタイムラインを壊すうえ、一度紛れ込むと build のたびに同じ失敗を繰り返す。
-			// 途中で電源が落ちた等で壊れるのは利用者の落ち度ではないので、作り直せる限りエラーにはしない。
-			if info, err := audio.MeasureBytes(wav); err == nil {
-				return info.Duration, true, nil
-			}
-		}
+func prepareWAV(ctx context.Context, in Input, engine tts.Engine, key string, req tts.SynthesizeRequest) (time.Duration, []props.MoraTiming, bool, error) {
+	if d, moras, ok := cachedLine(in, key); ok {
+		return d, moras, true, nil
 	}
 
 	result, err := engine.Synthesize(ctx, req)
 	if err != nil {
-		return 0, false, fmt.Errorf("音声の合成に失敗しました: %w", err)
+		return 0, nil, false, fmt.Errorf("音声の合成に失敗しました: %w", err)
 	}
 	if result == nil {
 		// Engine も差し替えられる口なので、(nil, nil) で落ちないようにしておく。
-		return 0, false, errors.New("音声の合成に失敗しました（エンジンが結果を返しませんでした。scenaremo の不具合です。issue で報告してください）")
+		return 0, nil, false, errors.New("音声の合成に失敗しました（エンジンが結果を返しませんでした。scenaremo の不具合です。issue で報告してください）")
 	}
 
 	// 測るのは保存する前。壊れた wav をキャッシュへ置くと、次の build がそれを掴んでまた作り直す羽目になる。
 	info, err := audio.MeasureBytes(result.WAV)
 	if err != nil {
-		return 0, false, fmt.Errorf("合成された音声を読み取れませんでした。エンジンが壊れた wav を返しています: %w", err)
+		return 0, nil, false, fmt.Errorf("合成された音声を読み取れませんでした。エンジンが壊れた wav を返しています: %w", err)
 	}
 
 	// 保存できないことは致命的として扱う。ここに置いた wav は控えであると同時に
 	// props.json が指す現物でもあり、無いままレンダリングへ進んでも音の出ない動画になるだけだからである。
 	if err := in.Store.Put(key, result.WAV); err != nil {
-		return 0, false, fmt.Errorf("音声を保存できませんでした: %w", err)
+		return 0, nil, false, fmt.Errorf("音声を保存できませんでした: %w", err)
 	}
-	return info.Duration, false, nil
+
+	queryJSON := result.RawAudioQuery
+	if len(queryJSON) == 0 {
+		var err error
+		queryJSON, err = json.Marshal(result.AudioQuery)
+		if err != nil {
+			return 0, nil, false, fmt.Errorf("クエリの保存に失敗しました（JSONに変換できませんでした）: %w", err)
+		}
+	}
+
+	if err := in.Store.PutQuery(key, queryJSON); err != nil {
+		return 0, nil, false, fmt.Errorf("クエリを保存できませんでした: %w", err)
+	}
+
+	return info.Duration, moraTimings(result.AudioQuery), false, nil
 }
 
 // lineRequest は台本のセリフから、エンジン種別と合成要求を組み立てる。

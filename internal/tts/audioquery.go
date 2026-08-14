@@ -3,6 +3,7 @@ package tts
 import (
 	"encoding/json"
 	"fmt"
+	"time"
 )
 
 // AudioQuery は /audio_query が返し、/synthesis が受け取る合成パラメータ。
@@ -58,6 +59,65 @@ type Mora struct {
 	VowelLength float64 `json:"vowel_length"`
 	// Pitch は音高（無声化モーラは 0）。
 	Pitch float64 `json:"pitch"`
+}
+
+// MoraTiming は 1 モーラが wav のどこで鳴るか。Offset は wav の先頭からの位置。
+type MoraTiming struct {
+	Text     string        // カナ表記（「コ」「、」など）
+	Vowel    string        // 母音の音素 (a/i/u/e/o/N/pau/cl)
+	Offset   time.Duration // wav の先頭からこのモーラが鳴り始めるまで
+	Duration time.Duration // このモーラの発話長（子音 + 母音）
+}
+
+// MoraTimings は 1 モーラが wav のどこで鳴るかの実時間を返す。
+func (q AudioQuery) MoraTimings() []MoraTiming {
+	if len(q.AccentPhrases) == 0 {
+		return nil
+	}
+
+	speed := q.SpeedScale
+	if speed <= 0 {
+		speed = 1.0
+	}
+
+	var timings []MoraTiming
+	currentSec := q.PrePhonemeLength
+
+	addMora := func(m Mora) {
+		dur := m.Duration()
+		if m.Vowel == "pau" {
+			if q.PauseLength != nil {
+				dur = *q.PauseLength
+			}
+			if q.PauseLengthScale != nil {
+				dur *= *q.PauseLengthScale
+			}
+		}
+
+		startSec := currentSec / speed
+		currentSec += dur
+		endSec := currentSec / speed
+
+		startDur := time.Duration(startSec * float64(time.Second))
+		endDur := time.Duration(endSec * float64(time.Second))
+
+		timings = append(timings, MoraTiming{
+			Text:     m.Text,
+			Vowel:    m.Vowel,
+			Offset:   startDur,
+			Duration: endDur - startDur,
+		})
+	}
+
+	for _, ap := range q.AccentPhrases {
+		for _, m := range ap.Moras {
+			addMora(m)
+		}
+		if ap.PauseMora != nil {
+			addMora(*ap.PauseMora)
+		}
+	}
+	return timings
 }
 
 // Duration はモーラの発話長を秒で返す。

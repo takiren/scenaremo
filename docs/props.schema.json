@@ -163,6 +163,13 @@
           "type": "integer",
           "description": "このセリフに与えられたフレーム数。音声の実測長を切り上げた値なので、必ず音声の長さ以上になる（切り捨てると Sequence が音の末尾を切ってしまう）。",
           "minimum": 1
+        },
+        "moras": {
+          "type": "array",
+          "description": "モーラごとのタイミング情報。エンジンが返さなければキー自体が出ない。",
+          "items": {
+            "$ref": "#/$defs/mora"
+          }
         }
       }
     },
@@ -184,6 +191,35 @@
           "items": {
             "$ref": "#/$defs/creditEntry"
           }
+        }
+      }
+    },
+    "mora": {
+      "type": "object",
+      "title": "モーラ",
+      "description": "モーラ 1 つ分のタイミング情報。字幕のカラオケ的ハイライトや口パクに使う。",
+      "required": ["text", "vowel", "startFrame", "durationInFrames"],
+      "additionalProperties": false,
+      "properties": {
+        "text": {
+          "type": "string",
+          "description": "カナ表記（「コ」「、」など）。",
+          "minLength": 1
+        },
+        "vowel": {
+          "type": "string",
+          "description": "母音の音素 (a/i/u/e/o/N/pau/cl など)。",
+          "minLength": 1
+        },
+        "startFrame": {
+          "type": "integer",
+          "description": "このセリフの音声が鳴り始めてから、このモーラが鳴り始めるまでのフレーム数。丸めは切り上げ。実時間の秒で累積してから境界ごとにフレームへ直すことで、隣り合うモーラが隙間なく繋がるようにしている。",
+          "minimum": 0
+        },
+        "durationInFrames": {
+          "type": "integer",
+          "description": "このモーラに与えられたフレーム数。1 フレームに満たないモーラは 0 になる。ずらして 1 以上にすると、ずれが後続へ積み上がってしまい全体の尺と合わなくなるため、0 のままにしている。",
+          "minimum": 0
         }
       }
     },
