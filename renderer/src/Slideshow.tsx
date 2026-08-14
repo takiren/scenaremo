@@ -7,6 +7,7 @@ import {Credits} from './Credits';
 import {SceneAudio} from './SceneAudio';
 import {resolveSceneComponent} from './scenes/registry';
 import type {Props, Transition as TransitionData} from './schema';
+import {Subtitle} from './Subtitle';
 
 /**
  * 繋ぎの見せ方を選ぶ。
@@ -43,7 +44,7 @@ const presentationFor = (type: TransitionData['type']) => (type === 'fade' ? fad
  * 最後に足すと、総尺はちょうど meta.durationInFrames（= Σ シーンの尺 − Σ 繋ぎ + クレジットの尺）に一致する。
  * ここが 1 フレームでも食い違うと、末尾が composition の尺で切り落とされる。
  */
-export const Slideshow: React.FC<Props> = ({scenes, credits}) => {
+export const Slideshow: React.FC<Props> = ({speakers, scenes, credits}) => {
 	return (
 		<AbsoluteFill style={{backgroundColor: 'black'}}>
 			<TransitionSeries>
@@ -76,6 +77,15 @@ export const Slideshow: React.FC<Props> = ({scenes, credits}) => {
 								name={scene.image}
 							>
 								<SceneComponent scene={scene} />
+								{/*
+								 * 字幕はシーンコンポーネントの外に置く。中で描くことにすると、
+								 * 利用者が自作コンポーネントを 1 つ書いた瞬間にそのシーンだけ字幕が消える。
+								 * 音 (SceneAudio) と同じ扱いで、シーンコンポーネントの責務は
+								 * 「画をどう見せるか」に閉じている（→ issue #21 / docs/custom-components.md）。
+								 *
+								 * シーンの後ろに置くことで、画像の上に重なる。字幕が画像に隠れてはならない。
+								 */}
+								<Subtitle scene={scene} speakers={speakers} />
 								<SceneAudio scene={scene} />
 							</TransitionSeries.Sequence>
 						</React.Fragment>
